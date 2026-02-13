@@ -186,6 +186,7 @@ function showApiKeyChoiceModal(serviceName, onPersonalKey, onCompanyLogin) {
 const activityTypesConfig = {
   "True or false": {
     label: "True or false",
+    defaultConsigne: "Vrai ou faux ?",
     feedback: ["Simple"],
     hasImage: true,
     hasAudio: true,
@@ -194,6 +195,7 @@ const activityTypesConfig = {
 
   "QCU": {
     label: "QCU",
+    defaultConsigne: "Réponds à la question.",
     feedback: ["Simple", "Complet"],
     hasImage: true,
     hasAudio: true,
@@ -202,6 +204,7 @@ const activityTypesConfig = {
 
   "QCM": {
     label: "QCM",
+    defaultConsigne: "Réponds à la question.",
     feedback: ["Simple", "Complet"],
     hasImage: true,
     hasAudio: true,
@@ -210,6 +213,7 @@ const activityTypesConfig = {
 
   "Matching": {
     label: "Matching",
+    defaultConsigne: "Associe les paires.",
     hasAudio: true,
     hasImage: false,
     subtypes: {
@@ -230,6 +234,7 @@ const activityTypesConfig = {
 
   "Complete": {
     label: "Complete",
+    defaultConsigne: "Écoute et complète.",
     hasAudio: true,
     subtypes: {
       "options": {
@@ -245,11 +250,13 @@ const activityTypesConfig = {
 
   "Flashcard": {
     label: "Flashcard",
+    defaultConsigne: "Réfléchis et tourne la carte.",
     feedback: [],
   },
 
   "Leçon": {
     label: "Leçon",
+    defaultConsigne: "Nouveautés !",
     hasImage: true,
     hasAudio: true,
     feedback: [],
@@ -261,6 +268,7 @@ const activityTypesConfig = {
 
   "Dialogue": {
     label: "Dialogue",
+    defaultConsigne: "Écoute le dialogue.",
     feedback: [],
     hasAudio: true,
     hasImage: true
@@ -368,6 +376,8 @@ function moveExercice(section, index, direction) {
 
   // 🔁 Met à jour l'ordre et les numéros
   reorderExercises(section);
+  currentExerciseId = `${section}_${targetIndex + 1}`;
+  updateSidebarExerciseList();
 
   // 🧭 Fait défiler jusqu'en haut de l'exercice déplacé (avec une marge)
   const movedEx = document.getElementById(`exo_${section}_${targetIndex + 1}`);
@@ -500,7 +510,7 @@ function updateFields(id) {
     html = `
       <label>Consigne</label>
       <input type="text" id="consigne_${id}" class="form-control mb-2"
-        value="${devMode ? "Détermine si l'affirmation est vraie ou fausse." : ""}">
+        value="${activityTypesConfig["True or false"].defaultConsigne}">
       
       <label>Nombre de tentatives</label>
       <input type="number" id="tentatives_${id}" class="form-control mb-2" min="1" max="5" value="1" disabled>
@@ -530,7 +540,7 @@ function updateFields(id) {
     html = `
       <label>Consigne</label>
       <input type="text" id="consigne_${id}" class="form-control mb-2"
-        value="${devMode ? "Choisis la bonne réponse." : ""}">
+        value="${activityTypesConfig["QCU"].defaultConsigne}">
 
       <label>Nombre de tentatives</label>
       <input type="number" id="tentatives_${id}" class="form-control mb-2" min="1" max="5" value="1" disabled>
@@ -566,7 +576,7 @@ function updateFields(id) {
     html = `
       <label>Consigne</label>
       <input type="text" id="consigne_${id}" class="form-control mb-2"
-        value="${devMode ? "Choisis toutes les réponses correctes." : ""}">
+        value="${activityTypesConfig["QCM"].defaultConsigne}">
 
       <label>Nombre de tentatives</label>
       <input type="number" id="tentatives_${id}" class="form-control mb-2" min="1" max="5" value="1" disabled>
@@ -633,7 +643,7 @@ function updateFields(id) {
     html = `
       <label>Consigne</label>
       <input type="text" id="consigne_${id}" class="form-control mb-2"
-        value="${devMode ? "Lis la phrase à voix haute ou répète-la." : ""}">
+        value="Lis la phrase à voix haute ou répète-la.">
 
       <label>Nombre de tentatives</label>
       <input type="number" id="tentatives_${id}" class="form-control mb-2" min="1" max="5" value="1">
@@ -716,7 +726,7 @@ function updateFields(id) {
     html = `
       <label>Consigne</label>
       <input type="text" id="consigne_${id}" class="form-control mb-2"
-        value="${devMode ? "Écoute le dialogue et lis le script." : ""}">
+        value="${activityTypesConfig["Dialogue"].defaultConsigne}">
 
       ${createImageToggle(id)}
       ${createAudioToggle(id)}
@@ -752,7 +762,7 @@ function updateMatchingFields(id) {
     <label>Consigne</label>
     <input type="text" id="consigne_${id}" class="form-control mb-3"
       placeholder="Indique la consigne à afficher"
-      value="${devMode ? "Associe les éléments entre la colonne de gauche et celle de droite." : ""}">
+      value="${activityTypesConfig["Matching"].defaultConsigne}">
     ${createAudioToggle(id)}
     <label>Nombre de tentatives</label>
     <input type="number" id="tentatives_${id}" class="form-control mb-3" min="1" max="9999" value="9999" disabled>
@@ -945,7 +955,7 @@ function updateCompleteFields(id) {
     <label>Consigne</label>
     <input type="text" id="consigne_${id}" class="form-control mb-3"
       placeholder="Indique la consigne à afficher"
-      value="${devMode ? "Complète la phrase avec le mot correct." : ""}">
+      value="${activityTypesConfig["Complete"].defaultConsigne}">
 
     <label>Nombre de tentatives</label>
     <input type="number" id="tentatives_${id}" class="form-control mb-3" min="1" max="5" value="1" disabled>
@@ -1168,7 +1178,7 @@ function updateFlashcardFields(id) {
     <label>Consigne</label>
     <input type="text" id="consigne_${id}" class="form-control mb-3"
       placeholder="Indique la consigne à afficher"
-      value="${devMode ? "Lis et essaie de deviner la traduction." : ""}">
+      value="${activityTypesConfig["Flashcard"].defaultConsigne}">
   `;
 
   // ==========================================================
@@ -1364,7 +1374,7 @@ function updateLessonFields(id) {
       <label>Consigne</label>
       <input type="text" id="lessonConsigne_${id}" class="form-control mb-3"
         placeholder="Indique la consigne à afficher"
-        value="${devMode ? "Lis la leçon et écoute l’exemple." : ""}">
+        value="${activityTypesConfig["Leçon"].defaultConsigne}">
 
       <label>⚠️IMAGE OBLIGATOIRE⚠️</label>
       ${createImageToggle(id)}
@@ -1410,7 +1420,7 @@ function updateLessonFields(id) {
       <label>Consigne</label>
       <input type="text" id="lessonConsigne_${id}" class="form-control mb-3"
         placeholder="Indique la consigne à afficher"
-        value="${devMode ? "Lis attentivement la leçon suivante." : ""}">
+        value="Lis attentivement la leçon suivante.">
 
       <label>Texte principal de la leçon</label>
       <div id="lessonTexte_${id}" class="quill-editor mb-3"></div>
