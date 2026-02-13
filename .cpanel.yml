@@ -3,3 +3,6 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/sequenceur/public_html
     - /bin/rsync -a --exclude='api/config.php' --exclude='.git' --exclude='.cpanel.yml' --exclude='scorm-packages' ./ $DEPLOYPATH/
+    - /bin/chmod 755 $DEPLOYPATH
+    - /usr/bin/find $DEPLOYPATH -type d -exec /bin/chmod 755 {} \;
+    - /usr/bin/find $DEPLOYPATH -type f -exec /bin/chmod 644 {} \;
