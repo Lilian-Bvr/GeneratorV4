@@ -9,3 +9,7 @@ scorm-packages/
 
 # Sessions file
 generator_sessions.json
+
+# IDE and tool config
+.vscode/
+.claude/
