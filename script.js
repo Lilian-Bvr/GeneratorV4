@@ -15,10 +15,8 @@ let isImporting = false;
 let isDragging = false;
 
 /*  ======  CONNEXION ENTREPRISE  ======  */
-// Local dev → localhost:8080 ; Production (cPanel) → same domain, relative paths
-const SERVER_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:8080'
-  : '';
+// Both local (XAMPP) and production (cPanel) serve PHP on same origin
+const SERVER_URL = '';
 let sessionToken = sessionStorage.getItem('companySessionToken') || null;
 let companyName = sessionStorage.getItem('companyName') || '';
 let isCompanyLoggedIn = false;
@@ -4396,7 +4394,7 @@ function createImageToggle(id) {
         <button class="btn btn-outline-primary" type="button"
           onclick="openNanoBananaForImage('${id}')"
           title="Generate with NanoBanana AI">
-          🎨 Generate
+          🎨 Générer
         </button>
       </div>
       
@@ -4465,7 +4463,7 @@ function createAudioToggle(id) {
         <button class="btn btn-outline-primary" type="button"
           onclick="openElevenLabsForMainAudio('${id}')"
           title="Generate with ElevenLabs">
-          🎙️ Generate
+          🎙️ Générer
         </button>
       </div>
       
@@ -4970,7 +4968,7 @@ function openElevenLabsModal(audioKey, onConfirm) {
   }
   // Load voices if needed
   if (elevenLabsVoices.length === 0) {
-    alert('Chergement des voix...');
+    alert('Chargement des voix...');
     loadElevenLabsVoices().then(() => {
       if (elevenLabsVoices.length > 0) {
         openElevenLabsModal(audioKey, onConfirm);
@@ -5086,26 +5084,26 @@ function addDialogueLine() {
 
   lineDiv.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-      <strong style="color: #555;">Line ${dialogueLineCounter}</strong>
+      <strong style="color: #555;">Réplique ${dialogueLineCounter}</strong>
       <button onclick="removeDialogueLine(${dialogueLineCounter})" 
         class="btn btn-sm btn-outline-danger" 
         style="padding: 2px 8px; font-size: 12px;">
-        🗑️ Remove
+        🗑️ Retirer
       </button>
     </div>
     <div style="margin-bottom: 10px;">
-      <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #555;">Speaker Voice</label>
+      <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #555;">La voix</label>
       <select class="form-select form-select-sm dialogue-voice" data-line="${dialogueLineCounter}" style="font-size: 13px;">
-        <option value="">-- Select a Voice --</option>
+        <option value="">-- Choisir une voix --</option>
         ${voiceOptions}
       </select>
     </div>
     <div>
-      <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #555;">Dialogue Text</label>
+      <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #555;">Texte du dialogue</label>
       <textarea class="form-control form-control-sm dialogue-text" 
         data-line="${dialogueLineCounter}" 
         rows="2" 
-        placeholder="Enter what this speaker says..."
+        placeholder="Ecris la ligne de dialogue..."
         style="font-size: 13px; resize: vertical;"></textarea>
     </div>
   `;
@@ -5490,24 +5488,24 @@ function openGeminiModal(imageKey, onConfirm) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
           <h3 style="margin: 0; color: #1967d2; display: flex; align-items: center; gap: 8px;">
             <span>🎨</span>
-            <span>Generate Image with Gemini AI</span>
+            <span>Générer l'image avec l'IA de Gemini</span>
           </h3>
           <button onclick="closeGeminiModal()" class="btn-close" aria-label="Close"></button>
         </div>
 
         <div style="margin-bottom: 20px;">
           <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">
-            Describe your image:
+            Décris la scène que tu veux :
           </label>
           <textarea 
             id="imagePromptInput" 
             class="form-control" 
             rows="3" 
-            placeholder="Example: Two women talking in an office, one explaining something on a computer screen"
+            placeholder="Example: Une femme pointe du doigt l'écran de sa collègue pour lui expliquer quelque chose."
             style="resize: vertical; font-size: 14px;"
           ></textarea>
           <small class="text-muted" style="display: block; margin-top: 4px;">
-            💡 Tip: Be specific about the scene, people, and setting
+            💡 Astuce : Soyez précis à propos de la scène, des personnes, et du cadre.
           </small>
         </div>
 
@@ -5521,9 +5519,10 @@ function openGeminiModal(imageKey, onConfirm) {
               style="flex: 1;"
               title="Generate 1 image (~$0.039)"
             >
-              🎨 Generate 1 Image
+              🎨 Générer l'image
             </button>
-            <button 
+            <!-- ⚠️⚠️⚠️ j'ai retiré le bouton pour générer deux images
+            <button
               id="generateTwoImagesBtn" 
               class="btn btn-primary" 
               onclick="generateImagesGemini(2)"
@@ -5532,6 +5531,7 @@ function openGeminiModal(imageKey, onConfirm) {
             >
               ✨ Generate 2 Images
             </button>
+            --!>
           </div>
           
           <!-- Secondary actions -->
@@ -5541,11 +5541,13 @@ function openGeminiModal(imageKey, onConfirm) {
               onclick="clearGeminiKey()"
               style="white-space: nowrap;"
             >
-              🔑 Change API Key
+              🔑 Changer la clé API
             </button>
+            <!--
             <small class="text-muted" style="font-size: 0.8rem;">
               💡 Tip: Generate 1 for testing, 2 for best results
             </small>
+            --!>
           </div>
         </div>
 
@@ -5553,7 +5555,7 @@ function openGeminiModal(imageKey, onConfirm) {
 
         <div id="imageActionsContainer" style="display: none; margin-top: 20px; text-align: right;">
           <button class="btn btn-success" onclick="confirmSelectedImageGemini()">
-            ✅ Use Selected Image
+            ✅ Utiliser l'image sélectionnée
           </button>
         </div>
       </div>
@@ -5596,23 +5598,23 @@ async function generateImagesGemini(numImages = 2) {
   container.innerHTML = '';
   actionsContainer.style.display = 'none';
 
-  // Disable both buttons
+  // Disable buttons
   btn1.disabled = true;
-  btn2.disabled = true;
-  
+  if (btn2) btn2.disabled = true;
+
   // Update button text based on number of images
   if (numImages === 1) {
     btn1.textContent = '⏳ Generating...';
-    btn2.textContent = '✨ Generate 2 Images';
+    if (btn2) btn2.textContent = '✨ Generate 2 Images';
   } else {
-    btn1.textContent = '🎨 Generate 1 Image';
-    btn2.textContent = `⏳ Generating image 1 of ${numImages}...`;
+    btn1.textContent = "🎨 Générer l'image";
+    if (btn2) btn2.textContent = "⏳ Génération en cours...";
   }
 
   try {
     // Generate images
     for (let i = 0; i < numImages; i++) {
-      if (numImages > 1) {
+      if (numImages > 1 && btn2) {
         btn2.textContent = `⏳ Generating image ${i + 1} of ${numImages}...`;
       }
       
@@ -5634,15 +5636,15 @@ async function generateImagesGemini(numImages = 2) {
     
     // Re-enable buttons
     btn1.disabled = false;
-    btn2.disabled = false;
+    if (btn2) btn2.disabled = false;
     btn1.textContent = '🎨 Generate 1 Image';
-    btn2.textContent = '✨ Generate 2 Images';
+    if (btn2) btn2.textContent = '✨ Generate 2 Images';
 
   } catch (error) {
     console.error('❌ Error generating images:', error);
-    
+
     let errorMessage = error.message;
-    
+
     // Parse Gemini-specific errors
     if (errorMessage.includes('API_KEY_INVALID')) {
       errorMessage = 'Invalid API key. Please check your Gemini API key.';
@@ -5652,19 +5654,19 @@ async function generateImagesGemini(numImages = 2) {
     } else if (errorMessage.includes('SAFETY')) {
       errorMessage = 'Content blocked by safety filters. Please try a different prompt.';
     }
-    
+
     container.innerHTML = `
       <div class="alert alert-danger">
         <strong>Error:</strong> ${errorMessage}
         <br><small>Check console for details</small>
       </div>
     `;
-    
+
     // Reset buttons
     btn1.disabled = false;
-    btn2.disabled = false;
-    btn1.textContent = '🎨 Generate 1 Image';
-    btn2.textContent = '✨ Generate 2 Images';
+    if (btn2) btn2.disabled = false;
+    btn1.textContent = "🎨 Regénérer l'image";
+    if (btn2) btn2.textContent = "🎨 Regénérer les images";
   }
 }
 //  Afficher les images
