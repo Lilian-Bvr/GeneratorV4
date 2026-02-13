@@ -1,0 +1,14 @@
+# Block access to .git directory
+RedirectMatch 404 /\.git
+
+# Pass Authorization header to PHP (some Apache configs strip it)
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
+# Route /auth/* and /api/* to the PHP server
+# Skip rewrite if the file actually exists (e.g. setup.php)
+RewriteEngine On
+RewriteRule ^auth/(.*)$ api/server.php [L,QSA]
+RewriteRule ^upload$ api/server.php [L,QSA]
+RewriteRule ^delete/(.*)$ api/server.php [L,QSA]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^api/(.*)$ api/server.php [L,QSA]

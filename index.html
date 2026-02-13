@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Générateur de module Storyline</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+  <!-- Librairies externes -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+
+  <!-- FFmpeg.wasm for video processing (local to avoid CORS worker issue) -->
+  <script src="lib/ffmpeg.js"></script>
+  <script src="lib/ffmpeg-util.js"></script>
+
+  <!-- SortableJS for drag & drop -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  
+  <!-- Quill -->
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <nav class="navbar navbar-light bg-light px-3 mb-0">
+    <span class="navbar-brand mb-0 h1">🧩 Générateur de module Storyline</span>
+    <div class="d-flex align-items-center gap-3">
+      <div id="companyLoginBtn">
+        <button class="btn btn-sm btn-outline-primary" onclick="showLoginModal()">
+          <i class="bi bi-lock"></i> Connexion Entreprise
+        </button>
+      </div>
+      <div id="companyLoggedBadge" style="display:none;" class="d-flex align-items-center gap-2">
+        <span class="badge bg-success d-flex align-items-center gap-1">
+          <i class="bi bi-building"></i> <span id="companyNameLabel"></span>
+        </span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="handleLogout()">
+          <i class="bi bi-box-arrow-right"></i>
+        </button>
+      </div>
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="devModeSwitch" onchange="toggleDevMode()">
+        <label class="form-check-label" for="devModeSwitch">Mode développeur</label>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Layout: Sidebar + Content -->
+  <div class="container-fluid p-0">
+    <div class="row g-0">
+      
+      <!-- ========================================
+           LEFT SIDEBAR: Navigation
+      ======================================== -->
+      <div class="col-md-3 col-lg-2 sidebar-nav bg-light border-end">
+        <div class="sidebar-content p-3">
+          
+          <!-- Title Input -->
+          <div class="mb-4">
+            <label class="form-label fw-bold small text-muted">TITRE DU PARCOURS</label>
+            <input type="text" id="chapterTitle" class="form-control form-control-sm" 
+                   placeholder="Ex: Relation client">
+          </div>
+
+          <!-- Import Section -->
+          <div class="mb-4">
+            <label class="form-label fw-bold small text-muted">IMPORTER PROJET</label>
+            <input type="file" id="importZip" accept=".zip" class="form-control form-control-sm" 
+                   onchange="importZipProject(event)">
+          </div>
+
+          <hr>
+
+          <!-- Navigation Menu -->
+          <div class="mb-3">
+            <label class="form-label fw-bold small text-muted">SECTIONS</label>
+          </div>
+          
+          <nav class="nav-sections">
+            
+            <!-- Section 1: Découvre -->
+            <div class="section-group mb-2">
+              <div class="section-header" data-section="S1" onclick="showSectionOverview('S1')">
+                <i class="bi bi-chevron-right section-toggle" onclick="event.stopPropagation(); toggleSection('S1')"></i>
+                <i class="bi bi-1-circle text-primary me-2"></i>
+                <span class="section-name">Découvre</span>
+              </div>
+              
+              <ul class="exercise-list" id="nav-exercises-S1" data-section="S1" style="display:none;">
+                <!-- Exercises dynamically added here -->
+              </ul>
+              
+              <button class="btn btn-sm btn-outline-primary w-100 add-exercise-btn mt-2" 
+                      onclick="addExercice('S1')" style="display:none;" id="add-btn-S1">
+                <i class="bi bi-plus-circle me-1"></i> Ajouter exercice
+              </button>
+            </div>
+
+            <!-- Section 2: Pratique -->
+            <div class="section-group mb-2">
+              <div class="section-header" data-section="S2" onclick="showSectionOverview('S2')">
+                <i class="bi bi-chevron-right section-toggle" onclick="event.stopPropagation(); toggleSection('S2')"></i>
+                <i class="bi bi-2-circle text-success me-2"></i>
+                <span class="section-name">Pratique</span>
+              </div>
+              
+              <ul class="exercise-list" id="nav-exercises-S2" data-section="S2" style="display:none;"></ul>
+              
+              <button class="btn btn-sm btn-outline-success w-100 add-exercise-btn mt-2" 
+                      onclick="addExercice('S2')" style="display:none;" id="add-btn-S2">
+                <i class="bi bi-plus-circle me-1"></i> Ajouter exercice
+              </button>
+            </div>
+
+            <!-- Section 3: Approfondis -->
+            <div class="section-group mb-2">
+              <div class="section-header" data-section="S3" onclick="showSectionOverview('S3')">
+                <i class="bi bi-chevron-right section-toggle" onclick="event.stopPropagation(); toggleSection('S3')"></i>
+                <i class="bi bi-3-circle text-warning me-2"></i>
+                <span class="section-name">Approfondis</span>
+              </div>
+              
+              <ul class="exercise-list" id="nav-exercises-S3" data-section="S3" style="display:none;"></ul>
+              
+              <button class="btn btn-sm btn-outline-warning w-100 add-exercise-btn mt-2" 
+                      onclick="addExercice('S3')" style="display:none;" id="add-btn-S3">
+                <i class="bi bi-plus-circle me-1"></i> Ajouter exercice
+              </button>
+            </div>
+
+            <!-- Section 4: Consolide -->
+            <div class="section-group mb-2">
+              <div class="section-header" data-section="S4" onclick="showSectionOverview('S4')">
+                <i class="bi bi-chevron-right section-toggle" onclick="event.stopPropagation(); toggleSection('S4')"></i>
+                <i class="bi bi-4-circle text-danger me-2"></i>
+                <span class="section-name">Consolide</span>
+              </div>
+              
+              <ul class="exercise-list" id="nav-exercises-S4" data-section="S4" style="display:none;"></ul>
+              
+              <button class="btn btn-sm btn-outline-danger w-100 add-exercise-btn mt-2" 
+                      onclick="addExercice('S4')" style="display:none;" id="add-btn-S4">
+                <i class="bi bi-plus-circle me-1"></i> Ajouter exercice
+              </button>
+            </div>
+
+            <hr class="my-3">
+
+            <!-- Aperçu & Debug -->
+            <div class="section-group">
+              <div class="section-header" data-section="preview" onclick="showPreview()">
+                <i class="bi bi-bug text-info me-2"></i>
+                <span class="section-name">Aperçu & Debug</span>
+              </div>
+            </div>
+
+          </nav>
+        </div>
+      </div>
+
+      <!-- ========================================
+           CENTER: Content Area
+      ======================================== -->
+      <div class="col-md-9 col-lg-10 main-content">
+        <div class="content-area p-4">
+          
+          <!-- Welcome Screen -->
+          <div id="welcome-screen" class="text-center py-5">
+            <i class="bi bi-cursor text-muted" style="font-size: 4rem; opacity: 0.3;"></i>
+            <h3 class="mt-3 text-muted">Commencez votre module</h3>
+            <p class="text-muted">Cliquez sur une section dans le menu pour démarrer</p>
+          </div>
+          
+          <!-- Section Overview -->
+          <div id="section-overview" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <div>
+                <h2 class="mb-1">
+                  <i id="overview-icon" class="bi bi-1-circle text-primary me-2"></i>
+                  <span id="overview-title">Section 1 : Découvre</span>
+                </h2>
+                <p id="overview-description" class="text-muted mb-0">
+                  Introduction au thème, découverte des expressions clés.
+                </p>
+              </div>
+            </div>
+            
+            <div class="card">
+              <div class="card-body">
+                <div class="row">
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label fw-bold">⏱️ Durée (minutes)</label>
+                    <input type="number" id="overview-duration" class="form-control" 
+                           min="1" max="120" value="10" onchange="syncDuration()">
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label fw-bold">📝 Exercices</label>
+                    <div class="form-control bg-light" id="overview-exercise-count">0</div>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label fw-bold invisible">Action</label>
+                    <button class="btn btn-primary w-100" id="overview-add-btn" onclick="addFromOverview()">
+                      <i class="bi bi-plus-circle me-1"></i> Ajouter exercice
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Exercise View -->
+          <div id="exercise-view" style="display:none;">
+            <!-- Hidden containers for exercises -->
+            <div id="exercices_S1" style="display:none;"></div>
+            <div id="exercices_S2" style="display:none;"></div>
+            <div id="exercices_S3" style="display:none;"></div>
+            <div id="exercices_S4" style="display:none;"></div>
+          </div>
+          <!-- Hidden duration inputs for each section -->
+          <input type="hidden" id="duration_S1" value="10">
+          <input type="hidden" id="duration_S2" value="10">
+          <input type="hidden" id="duration_S3" value="10">
+          <input type="hidden" id="duration_S4" value="10">
+          
+          <!-- Preview Section -->
+          <div id="preview-section" style="display:none;">
+            <h2 class="text-info mb-3">
+              <i class="bi bi-bug me-2"></i>
+              Aperçu & Debug
+            </h2>
+            
+            <div class="text-center mb-4">
+              <button class="btn btn-secondary me-2" onclick="previewJSON()">👁️ Voir les fichiers JSON</button>
+              <button class="btn btn-outline-dark" onclick="previewDebug()">🐞 Voir version debug</button>
+              <button class="btn btn-primary" onclick="previewWithLocalServer()"><i class="bi bi-play-circle me-1"></i> Prévisualiser localement</button>
+            </div>
+
+            <!-- Cache Management -->
+            <div class="alert alert-warning">
+              <h5 class="alert-heading">🗑️ Gestion du cache</h5>
+              <p class="mb-2">
+                <strong>⚠️ Images noires après génération ?</strong> 
+                Le cache du navigateur peut être corrompu.
+              </p>
+              <hr>
+              <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-warning btn-sm" onclick="clearImageCache()">
+                  🧹 Vider le cache
+                </button>
+                <button class="btn btn-info btn-sm" onclick="showCacheInfo()">
+                  📊 Infos cache
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="showCacheClearingInstructions()">
+                  ❓ Aide
+                </button>
+              </div>
+              <div id="cacheInfoDisplay" class="mt-3 p-2 bg-light rounded small" style="display:none;"></div>
+            </div>
+
+            <div id="jsonPreview" class="bg-light p-3 border rounded" 
+                 style="white-space:pre-wrap; max-height:500px; overflow:auto; display:none;"></div>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal recadrage -->
+  <div id="cropModal" class="crop-modal">
+    <div class="crop-modal-overlay" onclick="closeCrop()"></div>
+    <div class="crop-modal-content">
+      <div class="crop-modal-header">
+        <h3 class="crop-modal-title">✂️ Recadrer l'image</h3>
+        <button type="button" class="crop-modal-close" onclick="closeCrop()" aria-label="Close">×</button>
+      </div>
+      <div class="crop-modal-body">
+        <div class="crop-container">
+          <img id="cropImage" alt="Image à recadrer">
+        </div>
+      </div>
+      <div class="crop-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeCrop()">Annuler</button>
+        <button type="button" class="btn btn-primary" onclick="validateCrop()">✓ Valider</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal édition vidéo (Crop + Trim) -->
+  <div id="videoCropModal" class="crop-modal">
+    <div class="crop-modal-overlay" onclick="closeVideoCrop()"></div>
+    <div class="crop-modal-content" style="max-width: 1400px; height: 90vh; max-height: 900px;">
+      <div class="crop-modal-header">
+        <h3 class="crop-modal-title">🎬 Éditer la vidéo</h3>
+        <button type="button" class="crop-modal-close" onclick="closeVideoCrop()" aria-label="Close">×</button>
+      </div>
+
+      <div class="crop-modal-body" style="flex-direction: column; align-items: stretch; overflow-y: auto; gap: 1rem;">
+
+        <!-- Video preview -->
+        <div class="video-editor-preview">
+          <video id="videoCropPreview" controls style="width: 100%; max-height: 400px; background: #000; border-radius: 8px;"></video>
+          <div id="videoFormatWarning" class="alert alert-warning mt-2" style="display: none;"></div>
+        </div>
+
+        <!-- Trim section -->
+        <div class="video-editor-card">
+          <h6 class="mb-3">✂️ Découpage temporel</h6>
+          <div class="row g-3">
+            <div class="col-md-5">
+              <label class="form-label mb-1">
+                Début : <strong id="trimStartDisplay">0:00</strong>
+              </label>
+              <input type="range" class="form-range" id="videoTrimStart"
+                     min="0" max="100" value="0" step="0.01"
+                     oninput="updateTrimPreview('start')">
+            </div>
+            <div class="col-md-5">
+              <label class="form-label mb-1">
+                Fin : <strong id="trimEndDisplay">0:00</strong>
+              </label>
+              <input type="range" class="form-range" id="videoTrimEnd"
+                     min="0" max="100" value="100" step="0.01"
+                     oninput="updateTrimPreview('end')">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+              <span class="badge bg-secondary w-100 text-center py-2" id="finalDuration">0s</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress section -->
+        <div id="videoProcessingProgress" class="video-editor-card" style="display: none;">
+          <h6 class="mb-2">⚙️ Traitement en cours...</h6>
+          <div class="progress" style="height: 22px;">
+            <div id="videoProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                 role="progressbar" style="width: 0%;">0%</div>
+          </div>
+          <p class="mt-2 mb-0 small text-muted" id="videoProgressText">Initialisation...</p>
+        </div>
+
+      </div>
+
+      <div class="crop-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeVideoCrop()">Annuler</button>
+        <button type="button" class="btn btn-primary" id="validateVideoBtn" onclick="validateVideoCrop()">✓ Valider et traiter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fixed Action Bar -->
+  <div id="fixedActionBar" class="fixed-bottom d-flex justify-content-center align-items-center gap-3 p-3 border-top bg-light shadow-lg">
+    <button class="btn btn-success" onclick="generatePackage()">💾 Exporter</button>
+    <button class="btn btn-primary" onclick="previewWithLocalServer()"><i class="bi bi-play-circle me-1"></i> Prévisualiser</button>
+  </div>
+
+  <script src="script.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+</html>
+
+<div id="scormPlayerModal" class="modal fade" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-fullscreen">
+      <div class="modal-content">
+        <div class="modal-header bg-dark text-white">
+          <div class="d-flex align-items-center">
+            <i class="bi bi-mortarboard-fill me-2" style="font-size: 1.5rem;"></i>
+            <div>
+              <h5 class="modal-title mb-0">Simulateur LMS - Prévisualisation SCORM</h5>
+              <small class="text-muted">Aperçu du module tel qu'il apparaîtra dans votre plateforme</small>
+            </div>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        
+        <div class="modal-body p-0 position-relative" style="height: calc(100vh - 120px);">
+          <!-- Loading Screen -->
+          <div id="scormLoading" class="position-absolute w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark bg-opacity-75" style="z-index: 1000;">
+            <div class="spinner-border text-primary mb-3" role="status" style="width: 4rem; height: 4rem;">
+              <span class="visually-hidden">Chargement...</span>
+            </div>
+            <h4 class="text-white mb-2">Génération du package SCORM...</h4>
+            <p class="text-white-50" id="scormLoadingStatus">Préparation des ressources</p>
+            <div class="progress mt-3" style="width: 300px; height: 8px;">
+              <div id="scormLoadingProgress" class="progress-bar progress-bar-striped progress-bar-animated" 
+                   role="progressbar" style="width: 0%"></div>
+            </div>
+          </div>
+          
+          <!-- SCORM Player Frame -->
+          <iframe id="scormPlayerFrame" 
+                  style="width: 100%; height: 100%; border: none; display: none; background: white;"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals">
+          </iframe>
+        </div>
+        
+        <div class="modal-footer bg-dark text-white">
+          <div class="d-flex justify-content-between align-items-center w-100">
+            <div class="text-start">
+              <small class="text-muted d-block">
+                <i class="bi bi-info-circle me-1"></i>
+                Prévisualisation hébergée sur SCORM Cloud
+              </small>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                <i class="bi bi-x-circle me-1"></i> Fermer
+              </button>
+              <button type="button" class="btn btn-success" onclick="generatePackage(); bootstrap.Modal.getInstance(document.getElementById('scormPlayerModal')).hide();">
+                <i class="bi bi-download me-1"></i> Exporter le module
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

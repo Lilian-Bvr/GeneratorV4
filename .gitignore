@@ -1,0 +1,11 @@
+# API keys and secrets (stays only on server)
+api/config.php
+
+# Setup tool (should be deleted after use)
+api/setup.php
+
+# SCORM preview temp files
+scorm-packages/
+
+# Sessions file
+generator_sessions.json
