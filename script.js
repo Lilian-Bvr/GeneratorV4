@@ -1376,7 +1376,7 @@ function updateLessonFields(id) {
         placeholder="Indique la consigne à afficher"
         value="${activityTypesConfig["Leçon"].defaultConsigne}">
 
-      <label>⚠️IMAGE OBLIGATOIRE⚠️</label>
+      
       ${createImageToggle(id)}
 
       <label>Expression (français)</label>
@@ -1385,7 +1385,7 @@ function updateLessonFields(id) {
       
       <!-- 🎧 Audio pour l'expression -->
       <div class="mb-3 border rounded p-2 bg-light">
-        <label class="form-label mb-1">Audio de l’expression (⚠️obligatoire⚠️)</label>
+        <label class="form-label mb-1">Audio de l’expression</label>
         <input type="file" accept="audio/*" id="audioExprFr_${id}"
           class="form-control form-control-sm"
           onchange="handleLessonExprAudioUpload(event, '${id}')">
@@ -1420,7 +1420,7 @@ function updateLessonFields(id) {
       <label>Consigne</label>
       <input type="text" id="lessonConsigne_${id}" class="form-control mb-3"
         placeholder="Indique la consigne à afficher"
-        value="Lis attentivement la leçon suivante.">
+        value="Nouveautés !">
 
       <label>Texte principal de la leçon</label>
       <div id="lessonTexte_${id}" class="quill-editor mb-3"></div>
