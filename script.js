@@ -332,6 +332,23 @@ function addExercice(section) {
     </select>
 
     <div id="fields_${id}"></div>
+
+    <div class="mt-3 text-center">
+      <button type="button" class="btn btn-sm btn-outline-info" id="quickPreviewBtn_${id}"
+        onclick="quickPreview('${id}')">
+        <i class="bi bi-play-circle"></i> Quick Preview
+      </button>
+    </div>
+    <div id="quickPreview_${id}" style="display:none;" class="mt-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <strong>Quick Preview</strong>
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+          onclick="closeQuickPreview('${id}')">Fermer</button>
+      </div>
+      <iframe id="quickPreviewFrame_${id}"
+        style="width:100%;height:600px;border:1px solid #ccc;border-radius:8px;">
+      </iframe>
+    </div>
   `;
 
   container.appendChild(exDiv);
@@ -423,6 +440,12 @@ function reorderExercises(section) {
 
     const closeBtn = exo.querySelector(".btn-close");
     if (closeBtn) closeBtn.setAttribute("onclick", `removeExercice('${section}', ${newIndex})`);
+
+    // 🔍 Quick Preview buttons
+    const qpBtn = exo.querySelector(`[id^="quickPreviewBtn_"]`);
+    if (qpBtn) qpBtn.setAttribute("onclick", `quickPreview('${newId}')`);
+    const qpCloseBtn = exo.querySelector(`[id^="quickPreview_"] .btn-outline-secondary`);
+    if (qpCloseBtn) qpCloseBtn.setAttribute("onclick", `closeQuickPreview('${newId}')`);
 
     // 🆔 Met à jour tous les ID internes
     const elements = exo.querySelectorAll("[id]");
@@ -2817,6 +2840,7 @@ function buildResult() {
           Feedback: feedbackData,
           Tentatives: tentatives,
           Image: imagePath,
+          Video: videoPath,
           Audio_Enonce: audioEnonce
         };
         continue;
@@ -2848,6 +2872,7 @@ function buildResult() {
           Feedback: feedbackData,
           Tentatives: tentatives,
           Image: imagePath,
+          Video: videoPath,
           Audio_Enonce: audioEnonce
         };
         continue;
@@ -3211,6 +3236,229 @@ function buildResult() {
 
   return { S0, sectionsData, safeName };
 }
+// =====================================================
+// Quick Preview — Collecte d'un seul exercice remappé en S1_EX1
+// =====================================================
+function buildSingleExerciseResult(id) {
+  const [origSection, origNumStr] = id.split("_");
+  const origNum = Number(origNumStr);
+  const type = document.getElementById(`type_${id}`)?.value;
+  if (!type) throw new Error("Aucun type sélectionné pour cet exercice.");
+
+  // Remapped base path (everything becomes S1_EX1)
+  const basePath = `Ressources_Sequences/S1/Audios/S1_EX1`;
+
+  const consigne = document.getElementById(`consigne_${id}`)?.value || "";
+  const tentatives = Number(document.getElementById(`tentatives_${id}`)?.value || (
+    type === "QCU" || type === "Matching" || type === "Complete" ? 2 : 1
+  ));
+
+  // Media — lookup with original keys
+  const origMediaKey = `${origSection}_EX${origNum}`;
+  const imagePath = imagesData[origMediaKey]
+    ? `Ressources_Sequences/S1/Images/S1_EX1.jpg`
+    : null;
+  const videoPath = videosData[origMediaKey]
+    ? `Ressources_Sequences/S1/Videos/S1_EX1.mp4`
+    : null;
+  const audioData = audiosData[origMediaKey];
+
+  // --- Feedback ---
+  let feedbackData = null;
+  const feedbackAllowed =
+    activityTypesConfig[type]?.feedback?.length ||
+    (activityTypesConfig[type]?.subtypes &&
+      Object.values(activityTypesConfig[type].subtypes).some(st => st.feedback?.length));
+  if (feedbackAllowed) {
+    const feedbackType = document.getElementById(`feedbackType_${id}`)?.value || "Simple";
+    if (feedbackType === "Simple") {
+      const fbEl = document.getElementById(`feedback_${id}`);
+      const fbText = fbEl?.dataset.html || fbEl?.querySelector(".ql-editor")?.innerHTML || "";
+      feedbackData = { Type: "Simple", Texte_HTML: fbText };
+    } else if (feedbackType === "Complet") {
+      const correctionEl = document.getElementById(`feedbackCorrection_${id}`);
+      const tradEl = document.getElementById(`feedbackTrad_${id}`);
+      const phraseEl = document.getElementById(`feedbackSimple_${id}`);
+      const correction = correctionEl?.dataset.html || correctionEl?.querySelector(".ql-editor")?.innerHTML || "";
+      const traduction = tradEl?.dataset.html || tradEl?.querySelector(".ql-editor")?.innerHTML || "";
+      const phrase = phraseEl?.dataset.html || phraseEl?.querySelector(".ql-editor")?.innerHTML || "";
+      const fbAudio = audioData?.feedback ? `${basePath}_feedback.mp3` : null;
+      feedbackData = { Type: "Complet", Correction_HTML: correction, Traduction_HTML: traduction, Phrase_HTML: phrase, Audio: fbAudio };
+    }
+  }
+
+  // --- Build exercise data (same logic as buildResult, remapped to S1_EX1) ---
+  let exData = null;
+
+  if (type === "True or false") {
+    const affirmation = document.getElementById(`enonce_${id}`)?.value || "";
+    const truth = document.getElementById(`truth_${id}`)?.value || "True";
+    const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
+    exData = { Type: "True or false", Consigne: consigne, Affirmation: affirmation, BonneReponse: truth, Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: videoPath, Audio_Enonce: audioEnonce };
+  }
+  else if (type === "QCU") {
+    const question = document.getElementById(`enonce_${id}`)?.value || "";
+    const reponses = { A: document.getElementById(`qcuA_${id}`)?.value || "", B: document.getElementById(`qcuB_${id}`)?.value || "", C: document.getElementById(`qcuC_${id}`)?.value || "", D: document.getElementById(`qcuD_${id}`)?.value || "" };
+    const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
+    exData = { Type: "QCU", Consigne: consigne, Question: question, Reponses: reponses, BonneReponse: "A", Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: videoPath, Audio_Enonce: audioEnonce };
+  }
+  else if (type === "QCM") {
+    const question = document.getElementById(`enonce_${id}`)?.value || "";
+    const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
+    const reponses = {};
+    const corrections = [];
+    ["A", "B", "C", "D"].forEach(letter => {
+      reponses[letter] = document.getElementById(`qcm${letter}_${id}`)?.value || "";
+      if (document.getElementById(`qcmCheck_${letter}_${id}`)?.checked) corrections.push(letter);
+    });
+    exData = { Type: "QCM", Consigne: consigne, Question: question, Reponses: reponses, Corrections: corrections, Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: videoPath, Audio_Enonce: audioEnonce };
+  }
+  else if (type === "Matching") {
+    const matchConsigne = document.getElementById(`consigne_${id}`)?.value || "";
+    const matchType = document.getElementById(`matchType_${id}`)?.value || "";
+    const matchAudios = audioData?.match || {};
+    const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
+    const paires = {};
+    for (let p = 1; p <= 4; p++) {
+      const leftKey = `Match_L${p}`;
+      const rightKey = `Match_R${p}`;
+      const leftValue = matchType.includes("audio")
+        ? (matchAudios[leftKey] ? `${basePath}_${leftKey}.mp3` : "")
+        : document.getElementById(`matchText_${id}_L${p}`)?.value || "";
+      const rightValue = matchType.endsWith("audio")
+        ? (matchAudios[rightKey] ? `${basePath}_${rightKey}.mp3` : "")
+        : document.getElementById(`matchText_${id}_R${p}`)?.value || "";
+      paires[`P${p}`] = { [leftKey]: leftValue, [rightKey]: rightValue };
+    }
+    exData = { Type: "Matching", Consigne: matchConsigne, Feedback: feedbackData, Match_Type: matchType, Tentatives: tentatives, Audio_Enonce: audioEnonce, Paires: paires };
+  }
+  else if (type === "Complete") {
+    const completeType = document.getElementById(`completeType_${id}`)?.value || "";
+    const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
+    const options = [];
+    for (let j = 1; j <= 6; j++) {
+      const val = document.getElementById(`opt${j}_${id}`)?.value?.trim();
+      if (val) options.push(val);
+    }
+    const texteComplet = document.getElementById(`texte_${id}`)?.value || "";
+    let texteIncomplet = "(prévisualisation non générée)";
+    const previewEl = document.getElementById(`texteTronque_${id}`);
+    if (previewEl && previewEl.textContent && previewEl.textContent !== "(prévisualisation)") {
+      texteIncomplet = previewEl.textContent;
+    }
+    exData = { Type: "Complete", Complete_Type: completeType, Consigne: consigne, Texte_Complet: texteComplet, Texte_Incomplet: texteIncomplet, Options: options, Feedback: feedbackData, Tentatives: tentatives, Audio_Enonce: audioEnonce };
+  }
+  else if (type === "Flashcard") {
+    const flashType = document.getElementById(`flashcardType_${id}`)?.value || "";
+    const flashConsigne = document.getElementById(`consigne_${id}`)?.value || "";
+    const frontText = document.getElementById(`front_${id}`)?.value || "";
+    const backText = document.getElementById(`back_${id}`)?.value || "";
+    const frontAudio = audioData?.flashcard?.front ? `${basePath}_front.mp3` : null;
+    const backAudio = audioData?.flashcard?.back ? `${basePath}_back.mp3` : null;
+    const extraType = document.getElementById(`flashExtraType_${id}`)?.value || "Aucune";
+    let extraData = { Type: extraType };
+    if (extraType === "Ajouter des phrases en exemples") {
+      extraData = { Type: "Phrases", Elements: [] };
+      for (let j = 1; j <= 5; j++) {
+        const val = document.getElementById(`flashExtraPhrase_${id}_${j}`)?.value?.trim();
+        if (val) extraData.Elements.push(val);
+      }
+    } else if (extraType === "Ajouter des expressions complémentaires") {
+      extraData = { Type: "Expressions", Elements: [] };
+      for (let j = 1; j <= 5; j++) {
+        const expr = document.getElementById(`flashExtraExpr_${id}_${j}`)?.value?.trim();
+        const ex = document.getElementById(`flashExtraExemple_${id}_${j}`)?.value?.trim();
+        if (expr || ex) extraData.Elements.push({ Expression: expr || "", Exemple: ex || "" });
+      }
+    }
+    exData = { Type: "Flashcard", Flashcard_Type: flashType, Consigne: flashConsigne, Front_Text: frontText, Back_Text: backText, Tentatives: 1, Image: imagePath, Front_Audio: frontAudio, Back_Audio: backAudio, Extra: extraData };
+    if (feedbackData) exData.Feedback = feedbackData;
+  }
+  else if (type === "Leçon") {
+    const subType = document.getElementById(`lessonType_${id}`)?.value || "";
+    if (subType === "simple") {
+      const lessonConsigne = document.getElementById(`lessonConsigne_${id}`)?.value || "";
+      const exprFr = document.getElementById(`lessonExprFr_${id}`)?.value || "";
+      const exprEn = document.getElementById(`lessonExprEn_${id}`)?.value || "";
+      const exFr = document.getElementById(`lessonExFr_${id}`)?.value || "";
+      const exEn = document.getElementById(`lessonExEn_${id}`)?.value || "";
+      const audioExample = audioData?.example ? `${basePath}_example.mp3` : null;
+      const audioExpressionFr = audioData?.exprFr ? `${basePath}_exprFr.mp3` : null;
+      exData = { Type: "Leçon", SubType: "simple", Consigne: lessonConsigne, Expression_FR: exprFr, Expression_EN: exprEn, Exemple_FR: exFr, Exemple_EN: exEn, Image: imagePath, Audio_Exemple: audioExample, Audio_Expression: audioExpressionFr };
+    } else if (subType === "complexe") {
+      const lessonConsigne = document.getElementById(`lessonConsigne_${id}`)?.value || "";
+      const texteHTML = document.querySelector(`#lessonTexte_${id} .ql-editor`)?.innerHTML || "";
+      const hasHeader = document.getElementById(`lessonHeader_${id}`).value === "oui";
+      const cols = Number(document.getElementById(`lessonCols_${id}`).value || 1);
+      const rows = Number(document.getElementById(`lessonRows_${id}`).value || 1);
+      const headers = [];
+      if (hasHeader) {
+        for (let c = 1; c <= cols; c++) {
+          headers.push(document.getElementById(`lessonHeaderText_${id}_${c}`)?.value || "");
+        }
+      }
+      const lignes = [];
+      for (let r = 1; r <= rows; r++) {
+        const colonnes = [];
+        for (let c = 1; c <= cols; c++) {
+          const txt = document.getElementById(`lessonCell_${id}_${r}_${c}`)?.value || "";
+          const audioId = `${id}_LessonTable_L${r}_C${c}`;
+          const audioPath = audioData?.lesson?.[audioId]
+            ? `Ressources_Sequences/S1/Audios/S1_EX1_LessonTable_L${r}_C${c}.mp3`
+            : null;
+          colonnes.push({ Texte: txt, Audio: audioPath });
+        }
+        lignes.push({ Ligne: r, Colonnes: colonnes });
+      }
+      exData = { Type: "Leçon", SubType: "complexe", Consigne: lessonConsigne, Texte_HTML: texteHTML, Has_Header: hasHeader, Headers: headers, Lignes: lignes };
+    }
+  }
+  else if (type === "Dialogue") {
+    const dialogueConsigne = document.getElementById(`consigne_${id}`)?.value || "";
+    const dialogueTentatives = Number(document.getElementById(`tentatives_${id}`)?.value || 1);
+    const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
+    const lignes = [];
+    const dialogueContainer = document.getElementById(`dialogueContainer_${id}`);
+    if (dialogueContainer) {
+      dialogueContainer.querySelectorAll(".dialogue-line").forEach(line => {
+        const nom = line.querySelector(`[id^="dialogueNom_"]`)?.value.trim();
+        const texte = line.querySelector(`[id^="dialogueTexte_"]`)?.value.trim();
+        if (nom && texte) lignes.push({ Nom: nom, Texte: texte });
+      });
+    }
+    const scriptHTML = lignes.map(l => `<b>${l.Nom} :</b> ${l.Texte}<br><br>`).join("");
+    exData = { Type: "Dialogue", Consigne: dialogueConsigne, Tentatives: dialogueTentatives, Image: imagePath, Audio_Enonce: audioEnonce, Script: lignes, Script_HTML: scriptHTML };
+  }
+  else if (type === "Production orale - dictée") {
+    const dicteeConsigne = document.getElementById(`consigne_${id}`)?.value || "";
+    const dicteeTentatives = Number(document.getElementById(`tentatives_${id}`)?.value || 1);
+    const phrase = document.getElementById(`phrase_${id}`)?.value || "";
+    const hasAudio = document.getElementById(`audioSwitch_${id}`)?.checked || false;
+    const audioEnonce = hasAudio && audioData?.main ? `${basePath}_main.mp3` : null;
+    exData = { Type: "Production orale - dictée", Consigne: dicteeConsigne, Phrase: phrase, Tentatives: dicteeTentatives, Fournir_Audio: hasAudio, Audio_Exemple: audioEnonce, Image: imagePath, Feedback: feedbackData };
+  }
+
+  if (!exData) throw new Error(`Type d'exercice non reconnu: ${type}`);
+
+  const S0 = {
+    Chapter_Title: "Preview",
+    S1_Exo_Total: 1,
+    S2_Exo_Total: 0,
+    S3_Exo_Total: 0,
+    S4_Exo_Total: 0,
+    Durations: { S1: 0, S2: 0, S3: 0, S4: 0 }
+  };
+
+  const sectionsData = {
+    S1: { EX1: exData },
+    S2: {},
+    S3: {},
+    S4: {}
+  };
+
+  return { S0, sectionsData, safeName: "preview", origSection, origNum, origMediaKey };
+}
+
 function previewJSON() {
   const { S0, sectionsData } = buildResult();
   const container = document.getElementById("jsonPreview");
@@ -5989,6 +6237,156 @@ async function generateSCORMPackageInMemory(templatePath = "Modele/Modele.zip") 
 
   // --- Return the JSZip object (not the Blob) ---
   return templateZip;
+}
+
+// =====================================================
+// Quick Preview — Génération du package pour un seul exercice
+// =====================================================
+async function generateQuickPreviewPackage(id) {
+  const data = buildSingleExerciseResult(id);
+  const { S0, sectionsData, origMediaKey } = data;
+
+  // Load the QuickPreview template
+  const response = await fetch("Modele/Modele_QuickPreview.zip");
+  if (!response.ok) throw new Error("Impossible de charger Modele_QuickPreview.zip !");
+  const arrayBuffer = await response.arrayBuffer();
+  const templateZip = await JSZip.loadAsync(arrayBuffer);
+  const rootFolder = templateZip.folder("Ressources_Sequences");
+
+  // S0
+  rootFolder.folder("S0").file("variables.json", JSON.stringify(S0, null, 2));
+
+  // S1 only (exercise remapped to EX1)
+  const s1Folder = rootFolder.folder("S1");
+  const imgFolder = s1Folder.folder("Images");
+  const audioFolder = s1Folder.folder("Audios");
+  const videoFolder = s1Folder.folder("Videos");
+  s1Folder.file("variables.json", JSON.stringify(sectionsData.S1, null, 2));
+
+  // Image (remap original key to S1_EX1)
+  if (imagesData[origMediaKey]) {
+    imgFolder.file("S1_EX1.jpg", imagesData[origMediaKey]);
+  }
+
+  // Video
+  if (videosData[origMediaKey]) {
+    videoFolder.file("S1_EX1.mp4", videosData[origMediaKey]);
+  }
+
+  // Audios
+  const audioData = audiosData[origMediaKey];
+  if (audioData) {
+    if (audioData.main) audioFolder.file("S1_EX1_main.mp3", audioData.main);
+    if (audioData.exemple) audioFolder.file("S1_EX1_exemple.mp3", audioData.exemple);
+    if (audioData.feedback) audioFolder.file("S1_EX1_feedback.mp3", audioData.feedback);
+    // Matching
+    if (audioData.match) {
+      for (const [subKey, blob] of Object.entries(audioData.match)) {
+        audioFolder.file(`S1_EX1_${subKey}.mp3`, blob);
+      }
+    }
+    // Flashcards
+    if (audioData.flashcard) {
+      if (audioData.flashcard.front) audioFolder.file("S1_EX1_front.mp3", audioData.flashcard.front);
+      if (audioData.flashcard.back) audioFolder.file("S1_EX1_back.mp3", audioData.flashcard.back);
+    }
+    // Simple lessons
+    if (audioData.exprFr) audioFolder.file("S1_EX1_exprFr.mp3", audioData.exprFr);
+    if (audioData.example) audioFolder.file("S1_EX1_example.mp3", audioData.example);
+    // Complex lessons
+    if (audioData.lesson) {
+      for (const [lessonKey, blob] of Object.entries(audioData.lesson)) {
+        const pathMatch = lessonKey.match(/(S\d+)_(\d+)_LessonTable_L(\d+)_C(\d+)/);
+        if (pathMatch) {
+          audioFolder.file(`S1_EX1_LessonTable_L${pathMatch[3]}_C${pathMatch[4]}.mp3`, blob);
+        }
+      }
+    }
+  }
+
+  // Empty S2-S4 variables.json
+  for (const sec of ["S2", "S3", "S4"]) {
+    rootFolder.folder(sec).file("variables.json", JSON.stringify({}, null, 2));
+  }
+
+  return templateZip;
+}
+
+// =====================================================
+// Quick Preview — Lancement et fermeture
+// =====================================================
+async function quickPreview(id) {
+  const btn = document.getElementById(`quickPreviewBtn_${id}`);
+  const container = document.getElementById(`quickPreview_${id}`);
+  const iframe = document.getElementById(`quickPreviewFrame_${id}`);
+  if (!btn || !container || !iframe) return;
+
+  // Close any existing quick preview first
+  const openPreview = document.querySelector('[id^="quickPreview_"][data-package-id]');
+  if (openPreview) {
+    const openId = openPreview.id.replace('quickPreview_', '');
+    closeQuickPreview(openId);
+  }
+
+  // Show loading state
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Chargement...';
+  container.style.display = 'block';
+  iframe.style.display = 'none';
+
+  try {
+    // Generate and upload
+    const zipObject = await generateQuickPreviewPackage(id);
+    const zipBlob = await zipObject.generateAsync({ type: 'blob' });
+    const response = await fetch(`${SERVER_URL}/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/zip' },
+      body: zipBlob
+    });
+    if (!response.ok) throw new Error(`Server error: ${response.status}`);
+    const result = await response.json();
+    if (!result.success) throw new Error(result.error || 'Upload failed');
+
+    // Store packageId for cleanup
+    container.dataset.packageId = result.packageId;
+
+    // Load in iframe
+    iframe.onload = () => { iframe.style.display = 'block'; };
+    setTimeout(() => { iframe.style.display = 'block'; }, 2000);
+    iframe.src = result.launchUrl;
+
+    // Reset button
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Rafraichir Preview';
+
+  } catch (error) {
+    console.error('Quick Preview error:', error);
+    container.style.display = 'none';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-circle"></i> Quick Preview';
+    alert('Erreur Quick Preview:\n' + error.message);
+  }
+}
+
+function closeQuickPreview(id) {
+  const container = document.getElementById(`quickPreview_${id}`);
+  const iframe = document.getElementById(`quickPreviewFrame_${id}`);
+  const btn = document.getElementById(`quickPreviewBtn_${id}`);
+
+  // Cleanup server package
+  const packageId = container?.dataset.packageId;
+  if (packageId) {
+    fetch(`${SERVER_URL}/delete/${packageId}`, { method: 'DELETE' }).catch(() => {});
+    delete container.dataset.packageId;
+  }
+
+  // Reset UI
+  if (iframe) { iframe.src = ''; iframe.style.display = 'none'; }
+  if (container) container.style.display = 'none';
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-circle"></i> Quick Preview';
+  }
 }
 
 //  Stockage de l'ID puis suppression
