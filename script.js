@@ -14,6 +14,19 @@ let devMode = false;
 let isImporting = false;
 let isDragging = false;
 
+// ElevenLabs voice whitelist — only these voices are shown
+const VOICE_WHITELIST = [
+  { id: 'UJCi4DDncuo0VJDSIegj', name: '♀️ Amélie (Québec)' },
+  { id: 'mActWQg9kibLro6Z2ouY', name: '♀️ Riya (Québec)' },
+  { id: 'mVjOqyqTPfwlXPjV5sjX', name: '♂️ Thierry (Québec)' },
+  { id: 'IPgYtHTNLjC7Bq7IPHrm', name: '♂️ Alexandre (Québec)' },
+  { id: 'DOqLhiOMs8JmafdomNTP', name: '♀️ Cécile (France)' },
+  { id: '3C1zYzXNXNzrB66ON8rj', name: '♀️ Jade (France)' },
+  { id: 'xjN7jStE1u3GcbtBb0ln', name: '♂️ Charles (France)' },
+  { id: 'APeMLYgzzS2PWgyn5j9V', name: '♂️ Pierre (France)' },
+];
+const VOICE_WHITELIST_IDS = new Set(VOICE_WHITELIST.map(v => v.id));
+
 /*  ======  CONNEXION ENTREPRISE  ======  */
 // Both local (XAMPP) and production (cPanel) serve PHP on same origin
 const SERVER_URL = '';
@@ -5180,10 +5193,11 @@ async function loadElevenLabsVoices() {
     }
     if (response.status === 401) { clearSession(); return; }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    elevenLabsVoices = (data.voices || []).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
+    // Populate from whitelist (no need to parse API response)
+    elevenLabsVoices = VOICE_WHITELIST.map(wv => ({
+      voice_id: wv.id,
+      name: wv.name
+    }));
   } catch (error) {
     console.error('❌ Error loading voices:', error);
     elevenLabsVoices = [];
@@ -5349,17 +5363,16 @@ function addDialogueLine() {
   }
 
   const voiceOptions = elevenLabsVoices
-    .sort((a, b) => a.name.localeCompare(b.name))
     .map(v => `<option value="${v.voice_id}">${v.name}</option>`)
     .join('');
 
   const lineDiv = document.createElement('div');
   lineDiv.className = 'dialogue-line';
   lineDiv.style.cssText = `
-    border: 1px solid #ddd; 
-    padding: 15px; 
-    margin-bottom: 12px; 
-    border-radius: 8px; 
+    border: 1px solid #ddd;
+    padding: 15px;
+    margin-bottom: 12px;
+    border-radius: 8px;
     background: #fafafa;
     transition: all 0.2s ease;
   `;
@@ -5368,24 +5381,31 @@ function addDialogueLine() {
   lineDiv.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
       <strong style="color: #555;">Réplique ${dialogueLineCounter}</strong>
-      <button onclick="removeDialogueLine(${dialogueLineCounter})" 
-        class="btn btn-sm btn-outline-danger" 
+      <button onclick="removeDialogueLine(${dialogueLineCounter})"
+        class="btn btn-sm btn-outline-danger"
         style="padding: 2px 8px; font-size: 12px;">
         🗑️ Retirer
       </button>
     </div>
     <div style="margin-bottom: 10px;">
       <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #555;">La voix</label>
-      <select class="form-select form-select-sm dialogue-voice" data-line="${dialogueLineCounter}" style="font-size: 13px;">
-        <option value="">-- Choisir une voix --</option>
-        ${voiceOptions}
-      </select>
+      <div style="display: flex; gap: 6px; align-items: center;">
+        <select class="form-select form-select-sm dialogue-voice" data-line="${dialogueLineCounter}" style="font-size: 13px; flex: 1;">
+          <option value="">-- Choisir une voix --</option>
+          ${voiceOptions}
+        </select>
+        <button type="button" class="btn btn-sm btn-outline-secondary voice-preview-btn" data-line="${dialogueLineCounter}"
+          title="Écouter un extrait" style="padding: 2px 8px; font-size: 14px; white-space: nowrap;"
+          onclick="previewVoiceSample(this)">
+          &#9654;
+        </button>
+      </div>
     </div>
     <div>
       <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #555;">Texte du dialogue</label>
-      <textarea class="form-control form-control-sm dialogue-text" 
-        data-line="${dialogueLineCounter}" 
-        rows="2" 
+      <textarea class="form-control form-control-sm dialogue-text"
+        data-line="${dialogueLineCounter}"
+        rows="2"
         placeholder="Ecris la ligne de dialogue..."
         style="font-size: 13px; resize: vertical;"></textarea>
     </div>
@@ -5409,6 +5429,28 @@ function removeDialogueLine(lineId) {
     line.style.animation = 'fadeOut 0.2s ease';
     setTimeout(() => line.remove(), 200);
   }
+}
+// Voice sample preview — uses free preview_url from ElevenLabs API (no tokens consumed)
+let _voicePreviewAudio = null;
+function previewVoiceSample(btn) {
+  // Stop any currently playing preview
+  if (_voicePreviewAudio) {
+    _voicePreviewAudio.pause();
+    _voicePreviewAudio = null;
+  }
+  const lineId = btn.dataset.line;
+  const select = document.querySelector(`.dialogue-voice[data-line="${lineId}"]`);
+  if (!select || !select.value) { alert('Choisis une voix d\'abord.'); return; }
+  btn.innerHTML = '&#9632;'; // stop icon
+  _voicePreviewAudio = new Audio(`samples/${select.value}.mp3`);
+  _voicePreviewAudio.play();
+  _voicePreviewAudio.onended = () => { btn.innerHTML = '&#9654;'; _voicePreviewAudio = null; };
+  _voicePreviewAudio.onerror = () => { btn.innerHTML = '&#9654;'; _voicePreviewAudio = null; alert('Erreur lors de la lecture.'); };
+  btn.onclick = function() {
+    if (_voicePreviewAudio) { _voicePreviewAudio.pause(); _voicePreviewAudio = null; }
+    btn.innerHTML = '&#9654;';
+    btn.onclick = function() { previewVoiceSample(btn); };
+  };
 }
 async function generateDialogue() {
   const lines = [];
