@@ -721,8 +721,11 @@ function updateFields(id) {
         placeholder="Phrase d'exemple">${devMode ? "Nous sommes très stressés par ce changement d’équipe." : ""}</textarea>
 
       <label>Audio de l'exemple</label>
-      <input type="file" accept="audio/*" class="form-control mb-2"
-        onchange="handleAudioUpload(event, '${id}', true)">
+      ${createDualAudioButtons(
+        `audioInput_${id}_exemple`,
+        `handleAudioUpload(event, '${id}', true)`,
+        `openElevenLabsForAudio('${id}', 'exemple')`
+      )}
 
 
     `;
@@ -804,9 +807,11 @@ function updateMatchingFields(id) {
           inputs += `
                 <div class="mb-2">
                   <label>Audio L${i}</label>
-                  <input type="file" accept="audio/*" class="form-control mb-1"
-                    onchange="handleMatchAudioUpload(event, '${id}', 'L${i}')">
-                  <audio id="audioMatch_${id}_L${i}" controls style="display:none"></audio>
+                  ${createDualAudioButtons(
+                    `audioMatchInput_${id}_L${i}`,
+                    `handleMatchAudioUpload(event, '${id}', 'L${i}')`,
+                    `openElevenLabsForMatchAudio('${id}', 'L${i}')`
+                  )}
                 </div>
               `;
         }
@@ -821,9 +826,11 @@ function updateMatchingFields(id) {
           inputs += `
                 <div class="mb-2">
                   <label>Audio R${i}</label>
-                  <input type="file" accept="audio/*" class="form-control mb-1"
-                    onchange="handleMatchAudioUpload(event, '${id}', 'R${i}')">
-                  <audio id="audioMatch_${id}_R${i}" controls style="display:none"></audio>
+                  ${createDualAudioButtons(
+                    `audioMatchInput_${id}_R${i}`,
+                    `handleMatchAudioUpload(event, '${id}', 'R${i}')`,
+                    `openElevenLabsForMatchAudio('${id}', 'R${i}')`
+                  )}
                 </div>
               `;
         }
@@ -847,9 +854,11 @@ function updateMatchingFields(id) {
           inputs += `
                 <div class="mb-2">
                   <label>Audio L${i}</label>
-                  <input type="file" accept="audio/*" class="form-control mb-1"
-                    onchange="handleMatchAudioUpload(event, '${id}', 'L${i}')">
-                  <audio id="audioMatch_${id}_L${i}" controls style="display:none"></audio>
+                  ${createDualAudioButtons(
+                    `audioMatchInput_${id}_L${i}`,
+                    `handleMatchAudioUpload(event, '${id}', 'L${i}')`,
+                    `openElevenLabsForMatchAudio('${id}', 'L${i}')`
+                  )}
                 </div>
               `;
         }
@@ -1218,8 +1227,11 @@ function updateFlashcardFields(id) {
         placeholder="Texte de la face arrière (français)">${devMode ? "Comment vas-tu ?" : ""}</textarea>
 
       <label>Audio face arrière</label>
-      <input id="audioBack_${id}" type="file" accept="audio/*" class="form-control mb-2"
-        onchange="handleFlashcardAudioUpload(event, '${id}', 'back')">
+      ${createDualAudioButtons(
+        `audioFlashInput_${id}_back`,
+        `handleFlashcardAudioUpload(event, '${id}', 'back')`,
+        `openElevenLabsForFlashcardAudio('${id}', 'back')`
+      )}
     `;
   }
 
@@ -1233,16 +1245,22 @@ function updateFlashcardFields(id) {
         placeholder="Texte de la face avant (mot ou expression)">${devMode ? "To relax" : ""}</textarea>
 
       <label>Audio face avant</label>
-      <input id="audioFront_${id}" type="file" accept="audio/*" class="form-control mb-2"
-        onchange="handleFlashcardAudioUpload(event, '${id}', 'front')">
+      ${createDualAudioButtons(
+        `audioFlashInput_${id}_front`,
+        `handleFlashcardAudioUpload(event, '${id}', 'front')`,
+        `openElevenLabsForFlashcardAudio('${id}', 'front')`
+      )}
 
       <label>Texte de la face arrière</label>
       <textarea id="back_${id}" class="form-control mb-2"
         placeholder="Texte de la face arrière (phrase complète)">${devMode ? "I like to relax on weekends." : ""}</textarea>
 
       <label>Audio face arrière</label>
-      <input id="audioBack_${id}" type="file" accept="audio/*" class="form-control mb-2"
-        onchange="handleFlashcardAudioUpload(event, '${id}', 'back')">
+      ${createDualAudioButtons(
+        `audioFlashInput_${id}_back`,
+        `handleFlashcardAudioUpload(event, '${id}', 'back')`,
+        `openElevenLabsForFlashcardAudio('${id}', 'back')`
+      )}
     `;
   }
 
@@ -1408,10 +1426,12 @@ function updateLessonFields(id) {
       
       <!-- 🎧 Audio pour l'expression -->
       <div class="mb-3 border rounded p-2 bg-light">
-        <label class="form-label mb-1">Audio de l’expression</label>
-        <input type="file" accept="audio/*" id="audioExprFr_${id}"
-          class="form-control form-control-sm"
-          onchange="handleLessonExprAudioUpload(event, '${id}')">
+        <label class="form-label mb-1">Audio de l'expression</label>
+        ${createDualAudioButtons(
+          `audioExprFrInput_${id}`,
+          `handleLessonExprAudioUpload(event, '${id}')`,
+          `openElevenLabsForLessonExpr('${id}')`
+        )}
       </div>
       
       <label>Traduction (anglais)</label>
@@ -1423,12 +1443,14 @@ function updateLessonFields(id) {
       <input type="text" id="lessonExFr_${id}" class="form-control mb-2"
         placeholder="Exemple en français" value="${devMode ? "Je fais une pause après le déjeuner." : ""}">
 
-      <!-- 🎧 Audio pour l’exemple -->
+      <!-- 🎧 Audio pour l'exemple -->
       <div class="mb-3 border rounded p-2 bg-light">
-        <label class="form-label mb-1">Audio de l’exemple en français</label>
-        <input type="file" accept="audio/*" id="audioExFr_${id}"
-          class="form-control form-control-sm"
-          onchange="handleLessonExampleAudioUpload(event, '${id}')">
+        <label class="form-label mb-1">Audio de l'exemple en français</label>
+        ${createDualAudioButtons(
+          `audioExFrInput_${id}`,
+          `handleLessonExampleAudioUpload(event, '${id}')`,
+          `openElevenLabsForLessonExample('${id}')`
+        )}
       </div>
 
       <label>Traduction de l’exemple en anglais</label>
@@ -1537,12 +1559,12 @@ function buildLessonGrid(id) {
               class="form-control form-control-sm mb-1" 
               placeholder="Texte">
 
-            <input 
-              type="file" 
-              id="lessonCellAudio_${id}_${r}_${c}" 
-              accept="audio/*" 
-              class="form-control form-control-sm" 
-              onchange="handleLessonAudioUpload(event, '${id}_LessonTable_L${r}_C${c}')">
+            <small class="text-muted">Audio :</small>
+            ${createDualAudioButtons(
+              `lessonCellAudioInput_${id}_LessonTable_L${r}_C${c}`,
+              `handleLessonAudioUpload(event, '${id}_LessonTable_L${r}_C${c}')`,
+              `openElevenLabsForLessonCell('${id}', '${id}_LessonTable_L${r}_C${c}')`
+            )}
           </div>
         </div>
       `;
@@ -2695,6 +2717,7 @@ function addRecapAudioPreviewWithDelete(targetInput, blob, section, index) {
 /*  ======  Construction et preview JSON  ======  */
 function buildResult() {
   const title = document.getElementById("chapterTitle").value.trim() || "Parcours sans nom";
+  const level = Number(document.getElementById("chapterLevel")?.value || 1);
   const safeName = title.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "") || "chapitre";
 
   // --- ⏱️ Lecture des durées estimées par section ---
@@ -2706,6 +2729,7 @@ function buildResult() {
   // --- S0 : infos générales ---
   const S0 = {
     Chapter_Title: title,
+    Level: level,
     S1_Exo_Total: sections.S1.count,
     S2_Exo_Total: sections.S2.count,
     S3_Exo_Total: sections.S3.count,
@@ -3680,6 +3704,7 @@ async function importZipProject(event) {
     if (!s0File) throw new Error("Fichier S0 manquant !");
     const s0Content = JSON.parse(await s0File.async("string"));
     document.getElementById("chapterTitle").value = s0Content.Chapter_Title || "";
+    if (s0Content.Level) document.getElementById("chapterLevel").value = s0Content.Level;
 
     if (s0Content.Durations) {
       // Helper function with null safety
@@ -5573,6 +5598,111 @@ function openElevenLabsForAudio(id, audioType = 'main') {
   });
 }
 
+// =====================================================
+// Helpers pour les boutons Browse + Générer (audios secondaires)
+// =====================================================
+function createDualAudioButtons(inputId, browseHandler, generateFn) {
+  return `
+    <div class="d-flex gap-2 mb-2">
+      <input type="file" accept="audio/*" id="${inputId}" style="display:none"
+        onchange="${browseHandler}">
+      <button class="btn btn-sm btn-outline-secondary" type="button"
+        onclick="document.getElementById('${inputId}').click()">
+        📁 Browse
+      </button>
+      <button class="btn btn-sm btn-outline-primary" type="button"
+        onclick="${generateFn}">
+        🎙️ Générer
+      </button>
+    </div>
+  `;
+}
+
+function openElevenLabsForMatchAudio(id, position) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openElevenLabsModal(audioKey, (blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = { match: {} };
+    if (!audiosData[audioKey].match) audiosData[audioKey].match = {};
+    audiosData[audioKey].match[`Match_${position}`] = blob;
+    const inputEl = document.getElementById(`audioMatchInput_${id}_${position}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audioMatch_${id}_${position}`, (data) => {
+        if (data.match && data.match[`Match_${position}`]) delete data.match[`Match_${position}`];
+        if (data.match && Object.keys(data.match).length === 0) delete data.match;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openElevenLabsForFlashcardAudio(id, side) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openElevenLabsModal(audioKey, (blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = { flashcard: {} };
+    if (!audiosData[audioKey].flashcard) audiosData[audioKey].flashcard = {};
+    audiosData[audioKey].flashcard[side] = blob;
+    const inputEl = document.getElementById(`audioFlashInput_${id}_${side}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audioFlash_${id}_${side}`, (data) => {
+        if (data.flashcard && data.flashcard[side]) delete data.flashcard[side];
+        if (data.flashcard && Object.keys(data.flashcard).length === 0) delete data.flashcard;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openElevenLabsForLessonExpr(id) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openElevenLabsModal(audioKey, (blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = {};
+    audiosData[audioKey].exprFr = blob;
+    const inputEl = document.getElementById(`audioExprFrInput_${id}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audio_${audioKey}_exprFr`, (data) => {
+        if (data.exprFr) delete data.exprFr;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openElevenLabsForLessonExample(id) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openElevenLabsModal(audioKey, (blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = {};
+    audiosData[audioKey].example = blob;
+    const inputEl = document.getElementById(`audioExFrInput_${id}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audio_${audioKey}_example`, (data) => {
+        if (data.example) delete data.example;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openElevenLabsForLessonCell(id, cellId) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openElevenLabsModal(audioKey, (blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = { lesson: {} };
+    if (!audiosData[audioKey].lesson) audiosData[audioKey].lesson = {};
+    audiosData[audioKey].lesson[cellId] = blob;
+    const inputEl = document.getElementById(`lessonCellAudioInput_${cellId}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audioLesson_${cellId}`, (data) => {
+        if (data.lesson && data.lesson[cellId]) delete data.lesson[cellId];
+        if (data.lesson && Object.keys(data.lesson).length === 0) delete data.lesson;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
 
 
 /*  ======  Génération des images avec GEMINI API  ======  */
