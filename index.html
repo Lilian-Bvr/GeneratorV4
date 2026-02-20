@@ -33,15 +33,39 @@
 </head>
 <body>
 
+  <!-- ===== LOGIN GATE — blocks app until authenticated ===== -->
+  <div id="appLoginGate" style="
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #f0f2f5;
+    align-items: center;
+    justify-content: center;
+  ">
+    <div style="background:white; border-radius:16px; padding:40px 36px; max-width:400px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.12);">
+      <div style="text-align:center; margin-bottom:28px;">
+        <div style="font-size:36px; margin-bottom:10px;">🧩</div>
+        <h4 style="margin:0; color:#222;">Générateur de module Storyline</h4>
+        <p style="color:#888; margin:8px 0 0; font-size:14px;">Connectez-vous pour accéder à l'application.</p>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">Mot de passe</label>
+        <input type="password" id="gatePasswordInput" class="form-control"
+          placeholder="Mot de passe entreprise"
+          onkeydown="if(event.key==='Enter') handleGateLogin()">
+      </div>
+      <div id="gateLoginError" class="text-danger small mb-2" style="display:none;"></div>
+      <button class="btn btn-primary w-100" id="gateLoginBtn" onclick="handleGateLogin()">
+        <i class="bi bi-box-arrow-in-right"></i> Se connecter
+      </button>
+    </div>
+  </div>
+
   <!-- Header -->
   <nav class="navbar navbar-light bg-light px-3 mb-0">
     <span class="navbar-brand mb-0 h1">🧩 Générateur de module Storyline (Exp)</span>
     <div class="d-flex align-items-center gap-3">
-      <div id="companyLoginBtn">
-        <button class="btn btn-sm btn-outline-primary" onclick="showLoginModal()">
-          <i class="bi bi-lock"></i> Connexion Entreprise
-        </button>
-      </div>
       <div id="companyLoggedBadge" style="display:none;" class="d-flex align-items-center gap-2">
         <span class="badge bg-success d-flex align-items-center gap-1">
           <i class="bi bi-building"></i> <span id="companyNameLabel"></span>

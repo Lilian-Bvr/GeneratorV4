@@ -137,6 +137,42 @@ async function handleLogout() {
   clearSession();
 }
 
+async function handleGateLogin() {
+  const pwd = document.getElementById('gatePasswordInput')?.value;
+  if (!pwd) return;
+  const errEl = document.getElementById('gateLoginError');
+  const btn = document.getElementById('gateLoginBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Connexion...';
+  errEl.style.display = 'none';
+  try {
+    const res = await fetch(`${SERVER_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+    const data = await res.json();
+    if (res.ok && data.token) {
+      sessionToken = data.token;
+      companyName = data.companyName || 'Entreprise';
+      isCompanyLoggedIn = true;
+      sessionStorage.setItem('companySessionToken', sessionToken);
+      sessionStorage.setItem('companyName', companyName);
+      updateLoginUI(true);
+      loadElevenLabsVoices();
+      document.getElementById('gatePasswordInput').value = '';
+    } else {
+      errEl.textContent = data.error || 'Mot de passe incorrect';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = 'Impossible de joindre le serveur';
+    errEl.style.display = 'block';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Se connecter';
+}
+
 function clearSession() {
   sessionToken = null;
   companyName = '';
@@ -147,16 +183,18 @@ function clearSession() {
 }
 
 function updateLoginUI(loggedIn) {
-  const loginBtn = document.getElementById('companyLoginBtn');
+  const gate = document.getElementById('appLoginGate');
   const loggedBadge = document.getElementById('companyLoggedBadge');
   const nameLabel = document.getElementById('companyNameLabel');
   if (loggedIn) {
-    if (loginBtn) loginBtn.style.display = 'none';
+    if (gate) gate.style.display = 'none';
     if (loggedBadge) loggedBadge.style.display = 'flex';
     if (nameLabel) nameLabel.textContent = companyName;
   } else {
-    if (loginBtn) loginBtn.style.display = '';
+    if (gate) gate.style.display = 'flex';
     if (loggedBadge) loggedBadge.style.display = 'none';
+    // Focus the password field
+    setTimeout(() => document.getElementById('gatePasswordInput')?.focus(), 50);
   }
 }
 
