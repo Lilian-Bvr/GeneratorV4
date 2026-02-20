@@ -1,6 +1,21 @@
 # Block access to .git directory
 RedirectMatch 404 /\.git
 
+# Force revalidation for HTML, JS, CSS — prevents stale cache after deploys
+<IfModule mod_headers.c>
+  # HTML: never serve from cache without checking the server
+  <FilesMatch "\.(html|htm)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+  # JS and CSS: revalidate on every load (304 if unchanged = fast, but always fresh after deploy)
+  <FilesMatch "\.(js|css)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+    Header set Expires "0"
+  </FilesMatch>
+</IfModule>
+
 # Pass Authorization header to PHP (some Apache configs strip it)
 SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 
