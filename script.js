@@ -2,7 +2,7 @@
 const sections = { S1: { count: 0 }, S2: { count: 0 }, S3: { count: 0 }, S4: { count: 0 } };
 const imagesData = {};
 const audiosData = {};
-const videosData = {};    // AJOUT
+const videosData = {};
 const recapAudiosData = {};
 let currentImageConfirmCallback = null;
 let cropper, currentExId;
@@ -413,7 +413,7 @@ function removeExercice(section, index) {
   // 🧹 Nettoyage des données associées
   delete imagesData[`${section}_EX${index}`];
   delete audiosData[`${section}_EX${index}`];
-  delete videosData[`${section}_EX${index}`]; // AJOUT
+  delete videosData[`${section}_EX${index}`];
 
   // 🗑️ Suppression de l’exercice dans le DOM
   const exo = document.getElementById(`exo_${id}`);
@@ -469,7 +469,7 @@ function reorderExercises(section) {
 
   const newImages = {};
   const newAudios = {};
-  const newVideos = {}; // AJOUT
+  const newVideos = {};
 
   exercises.forEach((exo, i) => {
     const newIndex = i + 1;
@@ -514,8 +514,8 @@ function reorderExercises(section) {
     const audioToggle = exo.querySelector(`#audioSwitch_${newId}`);
     if (audioToggle) audioToggle.setAttribute("onchange", `toggleAudioField('${newId}')`);
 
-    const videoToggle = exo.querySelector(`#videoSwitch_${newId}`); // AJOUT
-    if (videoToggle) videoToggle.setAttribute("onchange", `toggleVideoField('${newId}')`); // AJOUT
+    const videoToggle = exo.querySelector(`#videoSwitch_${newId}`);
+    if (videoToggle) videoToggle.setAttribute("onchange", `toggleVideoField('${newId}')`);
 
     // 🗃 Synchronisation des blobs images/audios pour cette section
     const oldNum = oldId.split("_")[1];
@@ -523,7 +523,7 @@ function reorderExercises(section) {
     const newKey = `${section}_EX${newIndex}`;
 
     if (imagesData[oldKey]) newImages[newKey] = imagesData[oldKey];
-    if (videosData[oldKey]) newVideos[newKey] = videosData[oldKey]; // AJOUT
+    if (videosData[oldKey]) newVideos[newKey] = videosData[oldKey];
 
     // ✅ FIX: Handle nested audio structures while preserving Blobs
     if (audiosData[oldKey]) {
@@ -556,7 +556,7 @@ function reorderExercises(section) {
   }
   Object.assign(imagesData, newImages);
 
-  // AJOUT
+  
   for (const key of Object.keys(videosData)) {  
     if (key.startsWith(`${section}_EX`)) delete videosData[key];
   }
@@ -775,7 +775,8 @@ function updateFields(id) {
       ${createDualAudioButtons(
         `audioInput_${id}_exemple`,
         `handleAudioUpload(event, '${id}', true)`,
-        `openElevenLabsForAudio('${id}', 'exemple')`
+        `openElevenLabsForAudio('${id}', 'exemple')`,
+        `openRecorderForAudio('${id}', 'exemple')`
       )}
 
 
@@ -861,7 +862,8 @@ function updateMatchingFields(id) {
                   ${createDualAudioButtons(
                     `audioMatchInput_${id}_L${i}`,
                     `handleMatchAudioUpload(event, '${id}', 'L${i}')`,
-                    `openElevenLabsForMatchAudio('${id}', 'L${i}')`
+                    `openElevenLabsForMatchAudio('${id}', 'L${i}')`,
+                    `openRecorderForMatchAudio('${id}', 'L${i}')`
                   )}
                 </div>
               `;
@@ -880,7 +882,8 @@ function updateMatchingFields(id) {
                   ${createDualAudioButtons(
                     `audioMatchInput_${id}_R${i}`,
                     `handleMatchAudioUpload(event, '${id}', 'R${i}')`,
-                    `openElevenLabsForMatchAudio('${id}', 'R${i}')`
+                    `openElevenLabsForMatchAudio('${id}', 'R${i}')`,
+                    `openRecorderForMatchAudio('${id}', 'R${i}')`
                   )}
                 </div>
               `;
@@ -908,7 +911,8 @@ function updateMatchingFields(id) {
                   ${createDualAudioButtons(
                     `audioMatchInput_${id}_L${i}`,
                     `handleMatchAudioUpload(event, '${id}', 'L${i}')`,
-                    `openElevenLabsForMatchAudio('${id}', 'L${i}')`
+                    `openElevenLabsForMatchAudio('${id}', 'L${i}')`,
+                    `openRecorderForMatchAudio('${id}', 'L${i}')`
                   )}
                 </div>
               `;
@@ -1281,7 +1285,8 @@ function updateFlashcardFields(id) {
       ${createDualAudioButtons(
         `audioFlashInput_${id}_back`,
         `handleFlashcardAudioUpload(event, '${id}', 'back')`,
-        `openElevenLabsForFlashcardAudio('${id}', 'back')`
+        `openElevenLabsForFlashcardAudio('${id}', 'back')`,
+        `openRecorderForFlashcardAudio('${id}', 'back')`
       )}
     `;
   }
@@ -1299,7 +1304,8 @@ function updateFlashcardFields(id) {
       ${createDualAudioButtons(
         `audioFlashInput_${id}_front`,
         `handleFlashcardAudioUpload(event, '${id}', 'front')`,
-        `openElevenLabsForFlashcardAudio('${id}', 'front')`
+        `openElevenLabsForFlashcardAudio('${id}', 'front')`,
+        `openRecorderForFlashcardAudio('${id}', 'front')`
       )}
 
       <label>Texte de la face arrière</label>
@@ -1310,7 +1316,8 @@ function updateFlashcardFields(id) {
       ${createDualAudioButtons(
         `audioFlashInput_${id}_back`,
         `handleFlashcardAudioUpload(event, '${id}', 'back')`,
-        `openElevenLabsForFlashcardAudio('${id}', 'back')`
+        `openElevenLabsForFlashcardAudio('${id}', 'back')`,
+        `openRecorderForFlashcardAudio('${id}', 'back')`
       )}
     `;
   }
@@ -1481,7 +1488,8 @@ function updateLessonFields(id) {
         ${createDualAudioButtons(
           `audioExprFrInput_${id}`,
           `handleLessonExprAudioUpload(event, '${id}')`,
-          `openElevenLabsForLessonExpr('${id}')`
+          `openElevenLabsForLessonExpr('${id}')`,
+          `openRecorderForLessonExpr('${id}')`
         )}
       </div>
       
@@ -1500,7 +1508,8 @@ function updateLessonFields(id) {
         ${createDualAudioButtons(
           `audioExFrInput_${id}`,
           `handleLessonExampleAudioUpload(event, '${id}')`,
-          `openElevenLabsForLessonExample('${id}')`
+          `openElevenLabsForLessonExample('${id}')`,
+          `openRecorderForLessonExample('${id}')`
         )}
       </div>
 
@@ -1614,7 +1623,8 @@ function buildLessonGrid(id) {
             ${createDualAudioButtons(
               `lessonCellAudioInput_${id}_LessonTable_L${r}_C${c}`,
               `handleLessonAudioUpload(event, '${id}_LessonTable_L${r}_C${c}')`,
-              `openElevenLabsForLessonCell('${id}', '${id}_LessonTable_L${r}_C${c}')`
+              `openElevenLabsForLessonCell('${id}', '${id}_LessonTable_L${r}_C${c}')`,
+              `openRecorderForLessonCell('${id}', '${id}_LessonTable_L${r}_C${c}')`
             )}
           </div>
         </div>
@@ -2242,6 +2252,11 @@ function addAudioPreviewWithDelete(targetInput, blob, previewId, deleteCallback)
     if (!container) {
       container = targetInput.closest('[id^="audioContainer_"]');
     }
+  }
+
+  // Pattern 3: createDualAudioButtons wraps the input in a plain flex div — use it as the container
+  if (!container && targetInput.parentElement) {
+    container = targetInput.parentElement;
   }
 
   // If container found, use new clean layout
@@ -3609,7 +3624,7 @@ async function generatePackage(templatePath = "Modele/Modele.zip") {
     const sectionFolder = rootFolder.folder(section);
     const imgFolder = sectionFolder.folder("Images");
     const audioFolder = sectionFolder.folder("Audios");
-    const videoFolder = sectionFolder.folder("Videos"); // AJOUT
+    const videoFolder = sectionFolder.folder("Videos");
     sectionFolder.file("variables.json", JSON.stringify(sectionsData[section], null, 2));
 
     // --- Images ---
@@ -3619,7 +3634,7 @@ async function generatePackage(templatePath = "Modele/Modele.zip") {
       }
     }
 
-    // --- Videos --- // AJOUT
+    // --- Videos ---
     for (const [key, blob] of Object.entries(videosData)) {
       if (key.startsWith(section + "_")) {
         videoFolder.file(`${key}.mp4`, blob);
@@ -3732,10 +3747,83 @@ function waitForElement(selector, timeout = 500) {
     }, timeout);
   });
 }
+let _importOverlayTimer = null;
+
+function _removeImportOverlay() {
+  clearTimeout(_importOverlayTimer);
+  const overlay = document.getElementById('importOverlay');
+  if (!overlay) return;
+  overlay.style.opacity = '0';
+  setTimeout(() => overlay.remove(), 300);
+}
+
+function showImportOverlay() {
+  let overlay = document.getElementById('importOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'importOverlay';
+    overlay.style.cssText = `
+      position: fixed; inset: 0; z-index: 9998;
+      background: rgba(0,0,0,0.7);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.3s ease;
+    `;
+    // Spinner + label
+    overlay.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <div id="importSpinner" style="
+          width:48px;height:48px;border:4px solid rgba(255,255,255,0.3);
+          border-top-color:#fff;border-radius:50%;
+          animation:importSpin 0.8s linear infinite;
+        "></div>
+        <span id="importOverlayMsg" style="color:#fff;font-size:16px;font-weight:500;letter-spacing:0.02em;">
+          Importation en cours...
+        </span>
+      </div>
+    `;
+    // Inject keyframe if not already present
+    if (!document.getElementById('importSpinStyle')) {
+      const style = document.createElement('style');
+      style.id = 'importSpinStyle';
+      style.textContent = '@keyframes importSpin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(style);
+    }
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+  }
+}
+
+function hideImportOverlay(withSuccess) {
+  const overlay = document.getElementById('importOverlay');
+  if (!overlay) return;
+
+  if (!withSuccess) {
+    _removeImportOverlay();
+    return;
+  }
+
+  // Swap spinner for success message
+  overlay.innerHTML = `
+    <div style="
+      background:white;border-radius:12px;padding:24px 40px;
+      font-size:20px;font-weight:600;color:#222;
+      box-shadow:0 8px 32px rgba(0,0,0,0.25);
+      cursor:pointer;
+    " onclick="_removeImportOverlay()">
+      Import termin&#233;
+    </div>
+  `;
+  overlay.onclick = _removeImportOverlay;
+
+  // Auto-dismiss after 3 s
+  _importOverlayTimer = setTimeout(_removeImportOverlay, 3000);
+}
+
 async function importZipProject(event) {
   const file = event.target.files[0];
   if (!file) return;
 
+  showImportOverlay('');
   try {
     //console.time("⏱️ Import total");
     const zip = await JSZip.loadAsync(file);
@@ -3747,7 +3835,7 @@ async function importZipProject(event) {
     }
     Object.keys(imagesData).forEach(k => delete imagesData[k]);
     Object.keys(audiosData).forEach(k => delete audiosData[k]);
-    Object.keys(videosData).forEach(k => delete videosData[k]); // AJOUT
+    Object.keys(videosData).forEach(k => delete videosData[k]);
     Object.keys(recapAudiosData).forEach(k => delete recapAudiosData[k]);
 
     // --- Lecture S0 ---
@@ -3782,7 +3870,7 @@ async function importZipProject(event) {
       const sectionData = JSON.parse(await sectionFile.async("string"));
       const imgFolder = zip.folder(`Ressources_Sequences/${s}/Images`);
       const audioFolder = zip.folder(`Ressources_Sequences/${s}/Audios`);
-      const videoFolder = zip.folder(`Ressources_Sequences/${s}/Videos`);  // AJOUT
+      const videoFolder = zip.folder(`Ressources_Sequences/${s}/Videos`);
 
       // 🧩 Tri des exercices : EX1, EX2, EX3...
       const exoKeys = Object.keys(sectionData)
@@ -4130,7 +4218,7 @@ async function importZipProject(event) {
           }
         }
 
-        // === Video ===  // AJOUT
+        // === Video ===
         if (videoFolder) {
           const videoFile = videoFolder.file(`${exKey}.mp4`);
           if (videoFile) {
@@ -4353,12 +4441,12 @@ async function importZipProject(event) {
           if (exoData.Type === "Matching" && exoData.Match_Type && exoData.Match_Type.includes("audio") && audios.match) {
             console.groupCollapsed(`🎧 [${id}] Import des audios de Matching (${Object.keys(audios.match).length} fichiers)`);
 
-            // 🕓 Attente préalable que les inputs audio soient bien dans le DOM
+            // 🕓 Attente que les inputs audio soient dans le DOM
             const waitForMatchingInputs = async (timeoutMs = 6000) => {
               return new Promise((resolve, reject) => {
                 const start = performance.now();
                 const check = () => {
-                  const ready = document.querySelector(`#audioMatch_${id}_L1`);
+                  const ready = document.getElementById(`audioMatchInput_${id}_L1`);
                   if (ready) resolve();
                   else if (performance.now() - start > timeoutMs)
                     reject(new Error(`⏰ Timeout : inputs Matching non détectés (${id})`));
@@ -4370,7 +4458,6 @@ async function importZipProject(event) {
 
             try {
               await waitForMatchingInputs();
-              console.log(`✅ [${id}] Inputs audio Matching détectés, injection des previews...`);
             } catch (e) {
               console.warn(`⚠️ [${id}] Impossible de détecter les inputs audio Matching`, e);
             }
@@ -4380,106 +4467,36 @@ async function importZipProject(event) {
               const match = audioKey.match(/Match_(L|R)(\d+)/);
               if (!match) continue;
               const [_, side, idx] = match;
-              const inputId = `audioMatch_${id}_${side}${idx}`;
+              // audioMatchInput_${id}_L1 is the actual file <input> created by createDualAudioButtons
+              const inputId = `audioMatchInput_${id}_${side}${idx}`;
               const previewId = `audioMatch_${id}_${side}${idx}`;
 
-              console.log(`🔍 [${id}] Tentative d’injection du preview → ${audioKey} (input: #${inputId})`);
-
-              const waitForInput = async (timeoutMs = 5000) => {
-                return new Promise((resolve, reject) => {
-                  const start = performance.now();
-                  const check = () => {
-                    const input = document.getElementById(inputId);
-                    if (input) resolve(input);
-                    else if (performance.now() - start > timeoutMs)
-                      reject(new Error(`Timeout ${inputId}`));
-                    else requestAnimationFrame(check);
-                  };
-                  check();
-                });
-              };
-
-              try {
-                const input = await waitForInput();
-                if (!input) {
-                  console.warn(`⚠️ [${id}] Input introuvable pour ${inputId}`);
-                  continue;
-                }
-
-                console.log(`🎯 [${id}] Input trouvé :`, input);
-
-                // ✅ On cible maintenant le <input type="file"> précédent
-                const fileInput = input.previousElementSibling;
-                if (!fileInput || fileInput.tagName.toLowerCase() !== "input") {
-                  console.warn(`⚠️ [${id}] Aucun input[type=file] trouvé avant ${inputId}`);
-                  continue;
-                }
-
-                addAudioPreviewWithDelete(
-                  fileInput,
-                  blob,
-                  previewId,
-                  (data) => {
-                    if (data.match && data.match[audioKey]) delete data.match[audioKey];
-                    if (Object.keys(data.match || {}).length === 0) delete data.match;
-                    if (Object.keys(data).length === 0) delete audiosData[exKey];
-                  }
-                );
-
-                console.log(`✅ [${id}] addAudioPreviewWithDelete() exécuté pour ${previewId}`);
-                // Vérification immédiate
-                requestAnimationFrame(() => {
-                  const wrapper = fileInput.parentElement?.querySelector(".audio-wrapper");
-                  if (wrapper) {
-                    console.log(`🎵 [${id}] Preview DOM détecté pour ${audioKey}`);
-                  }
-                });
-              } catch (e) {
-                console.warn(`⚠️ [${id}] Impossible d’ajouter le preview pour ${inputId}`, e);
+              const fileInput = document.getElementById(inputId);
+              if (!fileInput) {
+                console.warn(`⚠️ [${id}] Input introuvable : ${inputId}`);
+                continue;
               }
-            }
 
-            console.log(`✅ [${id}] Tous les audios de Matching ont été traités.`);
-
-            // ♻️ Réinjection immédiate (optimisé)
-            requestAnimationFrame(() => {
-              console.log(`♻️ [${id}] Vérification immédiate des previews audio Matching...`);
-              Object.entries(audios.match).forEach(([audioKey, blob]) => {
-                const match = audioKey.match(/Match_(L|R)(\d+)/);
-                if (!match) return;
-                const [_, side, idx] = match;
-                const inputId = `audioMatch_${id}_${side}${idx}`;
-                const input = document.getElementById(inputId);
-                const fileInput = input?.previousElementSibling;
-                const alreadyHasPreview = fileInput?.parentElement?.querySelector(".audio-wrapper");
-                if (fileInput && !alreadyHasPreview) {
-                  console.log(`♻️ Réinjection du preview audio pour ${inputId}`);
-                  addAudioPreviewWithDelete(
-                    fileInput,
-                    blob,
-                    `audioMatch_${id}_${side}${idx}`,
-                    (data) => {
-                      if (data.match && data.match[audioKey]) delete data.match[audioKey];
-                      if (Object.keys(data.match || {}).length === 0) delete data.match;
-                      if (Object.keys(data).length === 0) delete audiosData[exKey];
-                    }
-                  );
-                } else {
-                  console.log(`✅ [${id}] Preview déjà présent pour ${inputId}`);
+              addAudioPreviewWithDelete(
+                fileInput,
+                blob,
+                previewId,
+                (data) => {
+                  if (data.match && data.match[audioKey]) delete data.match[audioKey];
+                  if (Object.keys(data.match || {}).length === 0) delete data.match;
+                  if (Object.keys(data).length === 0) delete audiosData[exKey];
                 }
-              });
-            });
+              );
+            }
 
             console.groupEnd();
           }
 
-          // === Audios de Flashcard courte ===
+          // === Audios de Flashcard ===
           if (exoData.Type === "Flashcard" && audios.flashcard) {
-            console.groupCollapsed(`🎧 [${id}] Import des audios de Flashcard (${Object.keys(audios.flashcard).length} fichiers)`);
-
-            // ✅ Attente intelligente (max 500ms)
-            const inputFront = await waitForElement(`#audioFront_${id}`, 500);
-            const inputBack = await waitForElement(`#audioBack_${id}`, 500);
+            // updateFlashcardFields() was already called synchronously above, inputs are in the DOM
+            const inputFront = document.getElementById(`audioFlashInput_${id}_front`);
+            const inputBack = document.getElementById(`audioFlashInput_${id}_back`);
 
             if (audios.flashcard.front && inputFront) {
               addAudioPreviewWithDelete(inputFront, audios.flashcard.front, `audio_${id}_front`, (data) => {
@@ -4498,8 +4515,6 @@ async function importZipProject(event) {
               });
               console.log(`✅ [${id}] Preview audio ajouté pour la face arrière`);
             }
-
-            console.groupEnd();
           }
 
           // === Leçon complexe ===
@@ -4528,14 +4543,16 @@ async function importZipProject(event) {
               console.warn(`⚠️ Grille non détectée pour ${id}`, e);
             }
             // 🧹 On ne garde que les audios correspondant à la section et exo courants
-            const currentPrefix = `${s}_${exoKey}_LessonTable_`;
+            // Keys are stored as S1_1_LessonTable_... (number only, no "EX" prefix)
+            const currentExNum = exoKey.replace("EX", "");
+            const currentPrefix = `${s}_${currentExNum}_LessonTable_`;
             const lessonAudios = Object.entries(audios.lesson).filter(([key]) => key.startsWith(currentPrefix));
             // 🧩 Injection des previews audio cellule par cellule
             for (const [audioKey, blob] of lessonAudios) {
               const match = audioKey.match(/LessonTable_L(\d+)_C(\d+)/);
               if (!match) continue;
               const [_, ligne, col] = match;
-              const inputId = `lessonCellAudio_${id}_${ligne}_${col}`;
+              const inputId = `lessonCellAudioInput_${id}_LessonTable_L${ligne}_C${col}`;
 
               const waitForInput = async (timeoutMs = 5000) => {
                 return new Promise((resolve, reject) => {
@@ -4576,7 +4593,7 @@ async function importZipProject(event) {
                 const match = audioKey.match(/LessonTable_L(\d+)_C(\d+)/);
                 if (!match) return;
                 const [_, ligne, col] = match;
-                const inputId = `lessonCellAudio_${id}_${ligne}_${col}`;
+                const inputId = `lessonCellAudioInput_${id}_LessonTable_L${ligne}_C${col}`;
                 const input = document.getElementById(inputId);
                 const alreadyHasPreview = input?.parentElement?.querySelector(".audio-wrapper");
                 if (input && !alreadyHasPreview) {
@@ -4603,7 +4620,7 @@ async function importZipProject(event) {
 
             // 🎧 Audio Expression (EX..._exprFr.mp3)
             if (hasExprFr) {
-              const inputExprFr = document.getElementById(`audioExprFr_${id}`);
+              const inputExprFr = document.getElementById(`audioExprFrInput_${id}`);
               if (inputExprFr) {
                 addAudioPreviewWithDelete(
                   inputExprFr,
@@ -4622,7 +4639,7 @@ async function importZipProject(event) {
 
             // 🎧 Audio Exemple (EX..._example.mp3)
             if (hasExample) {
-              const inputExFr = document.getElementById(`audioExFr_${id}`);
+              const inputExFr = document.getElementById(`audioExFrInput_${id}`);
               if (inputExFr) {
                 addAudioPreviewWithDelete(
                   inputExFr,
@@ -4682,9 +4699,10 @@ async function importZipProject(event) {
     }
 
     //console.timeEnd("⏱️ Import total");
-    alert("✅ Projet importé avec succès ! Clique sur OK");
+    hideImportOverlay(true);
   } catch (err) {
-    console.error("❌ Erreur d’import :", err);
+    console.error("Erreur d’import :", err);
+    hideImportOverlay(false);
     alert("Erreur lors de l’import du projet !");
   }
 }
@@ -4799,6 +4817,13 @@ function createAudioToggle(id) {
           title="Generate with ElevenLabs">
           🎙️ Générer
         </button>
+
+        <!-- Record button -->
+        <button class="btn btn-outline-danger" type="button"
+          onclick="openRecorderForMainAudio('${id}')"
+          title="Enregistrer (expérimental)">
+          ⏺ Enregistrer
+        </button>
       </div>
       
       <!-- Preview will be inserted here (separate from buttons) -->
@@ -4839,7 +4864,7 @@ function toggleAudioField(id) {
   }
 }
 
-// Génère le toggle vidéo // AJOUT
+// Génère le toggle vidéo
 function createVideoToggle(id) {
   return `
     <div class="form-check form-switch mb-2">
@@ -5679,11 +5704,128 @@ function openElevenLabsForAudio(id, audioType = 'main') {
 }
 
 // =====================================================
+// ENREGISTREUR AUDIO (EXPÉRIMENTAL)
+// =====================================================
+let _recorderStream = null;
+let _mediaRecorder = null;
+let _recorderChunks = [];
+let _recorderOnConfirm = null;
+let _recorderInterval = null;
+
+function openRecorderModal(onConfirm) {
+  _recorderOnConfirm = onConfirm;
+  const existing = document.getElementById('audioRecorderModal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'audioRecorderModal';
+  modal.style.cssText = `
+    display:flex; position:fixed; inset:0;
+    background:rgba(0,0,0,0.85); align-items:center; justify-content:center;
+    z-index:2000; backdrop-filter:blur(4px);
+  `;
+  modal.innerHTML = `
+    <div style="background:white;border-radius:16px;padding:28px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h5 style="margin:0;">🎤 Enregistrement <span style="font-size:12px;color:#888;font-weight:normal;">(expérimental)</span></h5>
+        <button onclick="closeRecorderModal()" class="btn btn-sm btn-outline-secondary">✕</button>
+      </div>
+      <div id="recorderStatus" style="text-align:center;padding:12px 0;color:#666;font-size:14px;">
+        Cliquez sur "Démarrer" pour commencer.
+      </div>
+      <div id="recorderTimer" style="text-align:center;font-size:40px;font-weight:bold;color:#dc3545;display:none;padding:8px 0;">
+        0:00
+      </div>
+      <div id="recorderPreview" style="display:none;margin:16px 0;">
+        <audio id="recorderAudioPreview" controls style="width:100%;"></audio>
+      </div>
+      <div id="recorderError" class="text-danger small text-center" style="display:none;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;">
+        <button id="recorderStartBtn" class="btn btn-danger" onclick="recorderStart()">⏺ Démarrer</button>
+        <button id="recorderStopBtn" class="btn btn-secondary" onclick="recorderStop()" style="display:none;">⏹ Arrêter</button>
+        <button id="recorderUseBtn" class="btn btn-success" onclick="recorderUse()" style="display:none;">✅ Utiliser</button>
+        <button id="recorderRetryBtn" class="btn btn-outline-secondary" onclick="recorderRetry()" style="display:none;">🔄 Recommencer</button>
+        <button class="btn btn-outline-danger" onclick="closeRecorderModal()">❌ Annuler</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+function closeRecorderModal() {
+  if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
+  if (_recorderStream) { _recorderStream.getTracks().forEach(t => t.stop()); _recorderStream = null; }
+  clearInterval(_recorderInterval);
+  _mediaRecorder = null; _recorderChunks = []; _recorderOnConfirm = null;
+  const modal = document.getElementById('audioRecorderModal');
+  if (modal) modal.remove();
+}
+
+async function recorderStart() {
+  const errEl = document.getElementById('recorderError');
+  errEl.style.display = 'none';
+  try {
+    _recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    errEl.textContent = 'Accès au microphone refusé. Vérifiez les permissions du navigateur.';
+    errEl.style.display = 'block';
+    return;
+  }
+  _recorderChunks = [];
+  _mediaRecorder = new MediaRecorder(_recorderStream);
+  _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _recorderChunks.push(e.data); };
+  _mediaRecorder.onstop = () => {
+    clearInterval(_recorderInterval);
+    _recorderStream.getTracks().forEach(t => t.stop());
+    const blob = new Blob(_recorderChunks, { type: 'audio/webm' });
+    const url = URL.createObjectURL(blob);
+    const preview = document.getElementById('recorderAudioPreview');
+    if (preview) preview.src = url;
+    document.getElementById('recorderPreview').style.display = 'block';
+    document.getElementById('recorderTimer').style.display = 'none';
+    document.getElementById('recorderStopBtn').style.display = 'none';
+    document.getElementById('recorderUseBtn').style.display = '';
+    document.getElementById('recorderRetryBtn').style.display = '';
+    document.getElementById('recorderStatus').textContent = 'Enregistrement terminé. Écoutez et cliquez sur "Utiliser".';
+  };
+  _mediaRecorder.start();
+  let seconds = 0;
+  document.getElementById('recorderTimer').style.display = 'block';
+  document.getElementById('recorderStatus').textContent = '🔴 Enregistrement en cours...';
+  document.getElementById('recorderStartBtn').style.display = 'none';
+  document.getElementById('recorderStopBtn').style.display = '';
+  _recorderInterval = setInterval(() => {
+    seconds++;
+    const timerEl = document.getElementById('recorderTimer');
+    if (timerEl) timerEl.textContent = `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
+  }, 1000);
+}
+
+function recorderStop() {
+  if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
+}
+
+function recorderRetry() {
+  document.getElementById('recorderPreview').style.display = 'none';
+  document.getElementById('recorderUseBtn').style.display = 'none';
+  document.getElementById('recorderRetryBtn').style.display = 'none';
+  document.getElementById('recorderStartBtn').style.display = '';
+  document.getElementById('recorderTimer').textContent = '0:00';
+  document.getElementById('recorderStatus').textContent = 'Cliquez sur "Démarrer" pour recommencer.';
+  _recorderChunks = [];
+}
+
+function recorderUse() {
+  const blob = new Blob(_recorderChunks, { type: 'audio/webm' });
+  if (_recorderOnConfirm) _recorderOnConfirm(blob);
+  closeRecorderModal();
+}
+
+// =====================================================
 // Helpers pour les boutons Browse + Générer (audios secondaires)
 // =====================================================
-function createDualAudioButtons(inputId, browseHandler, generateFn) {
+function createDualAudioButtons(inputId, browseHandler, generateFn, recordFn) {
   return `
-    <div class="d-flex gap-2 mb-2">
+    <div class="d-flex gap-2 mb-2 flex-wrap">
       <input type="file" accept="audio/*" id="${inputId}" style="display:none"
         onchange="${browseHandler}">
       <button class="btn btn-sm btn-outline-secondary" type="button"
@@ -5693,6 +5835,10 @@ function createDualAudioButtons(inputId, browseHandler, generateFn) {
       <button class="btn btn-sm btn-outline-primary" type="button"
         onclick="${generateFn}">
         🎙️ Générer
+      </button>
+      <button class="btn btn-sm btn-outline-danger" type="button"
+        onclick="${recordFn}" title="Expérimental">
+        ⏺ Enregistrer
       </button>
     </div>
   `;
@@ -5770,6 +5916,127 @@ function openElevenLabsForLessonCell(id, cellId) {
   const [section, exNum] = id.split("_");
   const audioKey = `${section}_EX${exNum}`;
   openElevenLabsModal(audioKey, (blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = { lesson: {} };
+    if (!audiosData[audioKey].lesson) audiosData[audioKey].lesson = {};
+    audiosData[audioKey].lesson[cellId] = blob;
+    const inputEl = document.getElementById(`lessonCellAudioInput_${cellId}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audioLesson_${cellId}`, (data) => {
+        if (data.lesson && data.lesson[cellId]) delete data.lesson[cellId];
+        if (data.lesson && Object.keys(data.lesson).length === 0) delete data.lesson;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+// =====================================================
+// openRecorderFor* — mirrors of ElevenLabs openers for the mic recorder
+// =====================================================
+function openRecorderForMainAudio(id) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openRecorderModal((blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = {};
+    audiosData[audioKey].main = blob;
+    const inputEl = document.getElementById(`audioInput_${id}_main`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audio_${id}_main`, (data) => {
+        if (data.main) delete data.main;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openRecorderForAudio(id, audioType = 'main') {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openRecorderModal((blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = {};
+    audiosData[audioKey][audioType] = blob;
+    const inputEl = document.getElementById(`audioInput_${id}_${audioType}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audio_${id}_${audioType}`, (data) => {
+        if (data[audioType]) delete data[audioType];
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openRecorderForMatchAudio(id, position) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openRecorderModal((blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = { match: {} };
+    if (!audiosData[audioKey].match) audiosData[audioKey].match = {};
+    audiosData[audioKey].match[`Match_${position}`] = blob;
+    const inputEl = document.getElementById(`audioMatchInput_${id}_${position}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audioMatch_${id}_${position}`, (data) => {
+        if (data.match && data.match[`Match_${position}`]) delete data.match[`Match_${position}`];
+        if (data.match && Object.keys(data.match).length === 0) delete data.match;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openRecorderForFlashcardAudio(id, side) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openRecorderModal((blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = { flashcard: {} };
+    if (!audiosData[audioKey].flashcard) audiosData[audioKey].flashcard = {};
+    audiosData[audioKey].flashcard[side] = blob;
+    const inputEl = document.getElementById(`audioFlashInput_${id}_${side}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audioFlash_${id}_${side}`, (data) => {
+        if (data.flashcard && data.flashcard[side]) delete data.flashcard[side];
+        if (data.flashcard && Object.keys(data.flashcard).length === 0) delete data.flashcard;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openRecorderForLessonExpr(id) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openRecorderModal((blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = {};
+    audiosData[audioKey].exprFr = blob;
+    const inputEl = document.getElementById(`audioExprFrInput_${id}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audio_${audioKey}_exprFr`, (data) => {
+        if (data.exprFr) delete data.exprFr;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openRecorderForLessonExample(id) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openRecorderModal((blob) => {
+    if (!audiosData[audioKey]) audiosData[audioKey] = {};
+    audiosData[audioKey].example = blob;
+    const inputEl = document.getElementById(`audioExFrInput_${id}`);
+    if (inputEl && typeof addAudioPreviewWithDelete === 'function') {
+      addAudioPreviewWithDelete(inputEl, blob, `audio_${audioKey}_example`, (data) => {
+        if (data.example) delete data.example;
+        if (Object.keys(data).length === 0) delete audiosData[audioKey];
+      });
+    }
+  });
+}
+
+function openRecorderForLessonCell(id, cellId) {
+  const [section, exNum] = id.split("_");
+  const audioKey = `${section}_EX${exNum}`;
+  openRecorderModal((blob) => {
     if (!audiosData[audioKey]) audiosData[audioKey] = { lesson: {} };
     if (!audiosData[audioKey].lesson) audiosData[audioKey].lesson = {};
     audiosData[audioKey].lesson[cellId] = blob;
@@ -6376,7 +6643,7 @@ async function generateSCORMPackageInMemory(templatePath = "Modele/Modele.zip") 
     const sectionFolder = rootFolder.folder(section);
     const imgFolder = sectionFolder.folder("Images");
     const audioFolder = sectionFolder.folder("Audios");
-    const videoFolder = sectionFolder.folder("Videos"); // AJOUT
+    const videoFolder = sectionFolder.folder("Videos");
     sectionFolder.file("variables.json", JSON.stringify(sectionsData[section], null, 2));
 
     // --- Images ---
@@ -6386,7 +6653,7 @@ async function generateSCORMPackageInMemory(templatePath = "Modele/Modele.zip") 
       }
     }
 
-    // --- Vidéos --- // AJOUT
+    // --- Vidéos ---
     for (const [key, blob] of Object.entries(videosData)) {
       if (key.startsWith(section + "_")) {
         videoFolder.file(`${key}.mp4`, blob);
