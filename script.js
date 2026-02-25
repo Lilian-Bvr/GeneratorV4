@@ -3802,21 +3802,22 @@ function hideImportOverlay(withSuccess) {
     return;
   }
 
-  // Swap spinner for success message
+  // Swap spinner for success message — entire overlay becomes clickable
+  overlay.style.cursor = 'pointer';
+  overlay.onclick = _removeImportOverlay;
   overlay.innerHTML = `
     <div style="
       background:white;border-radius:12px;padding:24px 40px;
       font-size:20px;font-weight:600;color:#222;
       box-shadow:0 8px 32px rgba(0,0,0,0.25);
-      cursor:pointer;
-    " onclick="_removeImportOverlay()">
-      Import termin&#233;
+      pointer-events:none;
+    ">
+      Import r&#233;ussi
     </div>
   `;
-  overlay.onclick = _removeImportOverlay;
 
   // Auto-dismiss after 3 s
-  _importOverlayTimer = setTimeout(_removeImportOverlay, 3000);
+  _importOverlayTimer = setTimeout(_removeImportOverlay, 500);
 }
 
 async function importZipProject(event) {
@@ -4821,7 +4822,7 @@ function createAudioToggle(id) {
         <!-- Record button -->
         <button class="btn btn-outline-danger" type="button"
           onclick="openRecorderForMainAudio('${id}')"
-          title="Enregistrer (expérimental)">
+          title="Enregistrer">
           ⏺ Enregistrer
         </button>
       </div>
@@ -5726,7 +5727,7 @@ function openRecorderModal(onConfirm) {
   modal.innerHTML = `
     <div style="background:white;border-radius:16px;padding:28px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-        <h5 style="margin:0;">🎤 Enregistrement <span style="font-size:12px;color:#888;font-weight:normal;">(expérimental)</span></h5>
+        <h5 style="margin:0;">🎤 Enregistrement <span style="font-size:12px;color:#888;font-weight:normal;"></span></h5>
         <button onclick="closeRecorderModal()" class="btn btn-sm btn-outline-secondary">✕</button>
       </div>
       <div id="recorderStatus" style="text-align:center;padding:12px 0;color:#666;font-size:14px;">
@@ -5837,7 +5838,7 @@ function createDualAudioButtons(inputId, browseHandler, generateFn, recordFn) {
         🎙️ Générer
       </button>
       <button class="btn btn-sm btn-outline-danger" type="button"
-        onclick="${recordFn}" title="Expérimental">
+        onclick="${recordFn}" title="Enregistrer">
         ⏺ Enregistrer
       </button>
     </div>
