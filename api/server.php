@@ -227,6 +227,209 @@ if ($path === '/api/gemini/generate' && $method === 'POST') {
     );
 }
 
+if ($path === '/api/deepl/translate' && $method === 'POST') {
+    $token = extractToken();
+    if (!validateSession($token)) jsonResponse(['error' => 'Non autorisé'], 401);
+    if (!DEEPL_API_KEY) jsonResponse(['error' => 'Clé DeepL non configurée'], 503);
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $text = $input['text'] ?? '';
+    $targetLang = $input['target_lang'] ?? 'EN';
+
+    // Free tier uses api-free.deepl.com, Pro uses api.deepl.com
+    // The free key ends with ':fx'
+    $host = str_ends_with(DEEPL_API_KEY, ':fx') ? 'api-free.deepl.com' : 'api.deepl.com';
+
+    proxyRequest(
+        "https://$host/v2/translate",
+        'POST',
+        [
+            'Authorization' => 'DeepL-Auth-Key ' . DEEPL_API_KEY,
+            'Content-Type' => 'application/json'
+        ],
+        json_encode(['text' => [$text], 'target_lang' => $targetLang])
+    );
+}
+
+// --- ANTHROPIC FLASHCARD GENERATION ---
+
+if ($path === '/api/anthropic/generate' && $method === 'POST') {
+    $token = extractToken();
+    if (!validateSession($token)) jsonResponse(['error' => 'Non autorisé'], 401);
+    if (!defined('ANTHROPIC_API_KEY') || !ANTHROPIC_API_KEY) jsonResponse(['error' => 'Clé Anthropic non configurée'], 503);
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $step       = $input['step']       ?? 'expressions'; // 'expressions' | 'sentences'
+    $niveau     = intval($input['niveau'] ?? 1);
+    $theme      = trim($input['theme']   ?? '');
+    $contraintes = trim($input['contraintes'] ?? '');
+    $expressions = $input['expressions'] ?? []; // used in step 2
+
+    if (!$theme) jsonResponse(['error' => 'Thème requis'], 400);
+
+    // Load curriculum for the requested level
+    $curriculumFile = __DIR__ . '/../Curriculum/curriculum.json';
+    $curriculum = file_exists($curriculumFile) ? json_decode(file_get_contents($curriculumFile), true) : [];
+    $levelData = $curriculum[(string)$niveau] ?? null;
+    $levelDesc = '';
+    if ($levelData) {
+        $label = $levelData['label'] ?? "Niveau $niveau";
+        $cefr  = $levelData['cefr_approx'] ?? '';
+        $peutFaire = implode('; ', array_slice($levelData['expression_orale']['peut_faire'] ?? [], 0, 5));
+        $params    = implode('; ', array_slice($levelData['expression_orale']['parametres']  ?? [], 0, 4));
+        $levelDesc = "Niveau $niveau — $label ($cefr).\nCe que l'employé peut faire : $peutFaire.\nCaractéristiques du discours : $params.";
+    }
+
+    if ($step === 'expressions') {
+        // Step 1: generate 10 French expressions + English translations
+        $contraintesBlock = $contraintes ? "\n\nContraintes supplémentaires de l'auteur : $contraintes" : '';
+        $prompt = <<<PROMPT
+Tu es un expert en conception pédagogique pour l'apprentissage du français langue seconde en contexte bancaire professionnel.
+
+NIVEAU DE L'APPRENANT :
+$levelDesc
+
+THÈME DE LA LEÇON : $theme$contraintesBlock
+
+TÂCHE : Génère exactement 10 expressions de vocabulaire français — chacune est un fragment court (2 à 6 mots) qu'un employé de banque utiliserait sur le thème donné. Pour chaque expression, fournis sa traduction anglaise équivalente, également sous forme de fragment court.
+
+FORMAT DES EXPRESSIONS (appliquer strictement) :
+- Groupe verbal à l'infinitif : "normaliser le bilan", "procéder à un virement", "accuser réception"
+- Groupe nominal : "le taux directeur", "la capacité de remboursement", "un ordre de virement"
+- Locution ou tournure figée : "en cours de traitement", "sous réserve de", "à titre indicatif"
+- Traduction anglaise dans le même format court : "to normalize the balance sheet", "the key interest rate"
+
+RÈGLES :
+- Chaque expression est adaptée au niveau indiqué en termes de complexité lexicale
+- Les expressions sont naturelles et réellement utilisées en contexte bancaire professionnel
+- Les 10 expressions couvrent des aspects variés du thème (pas de doublets sémantiques)
+
+RÉPONSE : JSON uniquement, sans commentaire, sans balises markdown.
+Format exact :
+{"expressions":[{"fr":"...","en":"..."},{"fr":"...","en":"..."},...]}
+PROMPT;
+
+        $body = json_encode([
+            'model' => 'claude-opus-4-5',
+            'max_tokens' => 1024,
+            'system' => 'Tu réponds uniquement en JSON valide, sans balises markdown ni commentaire.',
+            'messages' => [['role' => 'user', 'content' => $prompt]]
+        ]);
+
+        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_HTTPHEADER => [
+                'x-api-key: ' . ANTHROPIC_API_KEY,
+                'anthropic-version: 2023-06-01',
+                'content-type: application/json',
+                'anthropic-beta: prompt-caching-2024-07-31'
+            ],
+            CURLOPT_TIMEOUT => 60
+        ]);
+        $raw = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200) {
+            $err = json_decode($raw, true);
+            jsonResponse(['error' => $err['error']['message'] ?? 'Erreur Anthropic', 'raw' => $raw], 502);
+        }
+
+        $resp = json_decode($raw, true);
+        $text = $resp['content'][0]['text'] ?? '';
+        // Strip possible markdown code fences
+        $text = preg_replace('/^```(?:json)?\s*/m', '', $text);
+        $text = preg_replace('/```\s*$/m', '', $text);
+        $parsed = json_decode(trim($text), true);
+        if (!$parsed || !isset($parsed['expressions'])) {
+            jsonResponse(['error' => 'Réponse JSON invalide', 'raw' => $text], 502);
+        }
+        jsonResponse(['step' => 'expressions', 'expressions' => $parsed['expressions']]);
+
+    } elseif ($step === 'sentences') {
+        // Step 2: generate 10 authentic-context sentences from validated expressions
+        if (count($expressions) !== 10) jsonResponse(['error' => '10 expressions requises'], 400);
+
+        $exprList = '';
+        foreach ($expressions as $i => $e) {
+            $n = $i + 1;
+            $exprList .= "$n. FR: \"{$e['fr']}\" / EN: \"{$e['en']}\"\n";
+        }
+
+        $contraintesBlock = $contraintes ? "\n\nContraintes supplémentaires : $contraintes" : '';
+        $prompt = <<<PROMPT
+Tu es un expert en conception pédagogique pour l'apprentissage du français langue seconde en contexte bancaire professionnel.
+
+NIVEAU DE L'APPRENANT :
+$levelDesc
+
+THÈME : $theme$contraintesBlock
+
+EXPRESSIONS VALIDÉES (à utiliser dans les phrases) :
+$exprList
+
+TÂCHE : Pour chacune des 10 expressions ci-dessus, écris UNE phrase authentique en français telle qu'un employé de banque la dirait ou l'écrirait dans un contexte professionnel réel.
+
+RÈGLES :
+- Chaque phrase DOIT contenir l'expression française correspondante telle quelle
+- Les phrases sont authentiques : elles sonnent comme de vraies communications bancaires (email, réunion, appel, compte-rendu)
+- La complexité des phrases correspond au niveau indiqué (pas plus complexe, pas plus simple)
+- Varie les contextes : oral, écrit formel, échange informel entre collègues
+- Chaque phrase tourne autour du thème "$theme"
+- La phrase doit être complète et autonome (on comprend le sens sans contexte supplémentaire)
+- Pour l'instruction de la carte (face avant des Flashcards Longues), génère une consigne courte et spécifique qui : (1) cite l'expression française entre guillemets, et (2) précise une situation bancaire réaliste. Format : 'Utilisez "[expression]" [contexte court].' Exemples : 'Utilisez "le taux directeur" pour expliquer une décision à un client.', 'Dites à votre collègue d\'utiliser "procéder à un virement" dans un email.', 'Conseillez un client en utilisant "la capacité de remboursement".'
+
+RÉPONSE : JSON uniquement, sans commentaire, sans balises markdown.
+Format exact :
+{"sentences":[{"instruction":"...","sentence":"..."},...]  }
+PROMPT;
+
+        $body = json_encode([
+            'model' => 'claude-opus-4-5',
+            'max_tokens' => 2048,
+            'system' => 'Tu réponds uniquement en JSON valide, sans balises markdown ni commentaire.',
+            'messages' => [['role' => 'user', 'content' => $prompt]]
+        ]);
+
+        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_HTTPHEADER => [
+                'x-api-key: ' . ANTHROPIC_API_KEY,
+                'anthropic-version: 2023-06-01',
+                'content-type: application/json'
+            ],
+            CURLOPT_TIMEOUT => 60
+        ]);
+        $raw = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200) {
+            $err = json_decode($raw, true);
+            jsonResponse(['error' => $err['error']['message'] ?? 'Erreur Anthropic', 'raw' => $raw], 502);
+        }
+
+        $resp = json_decode($raw, true);
+        $text = $resp['content'][0]['text'] ?? '';
+        $text = preg_replace('/^```(?:json)?\s*/m', '', $text);
+        $text = preg_replace('/```\s*$/m', '', $text);
+        $parsed = json_decode(trim($text), true);
+        if (!$parsed || !isset($parsed['sentences'])) {
+            jsonResponse(['error' => 'Réponse JSON invalide', 'raw' => $text], 502);
+        }
+        jsonResponse(['step' => 'sentences', 'sentences' => $parsed['sentences']]);
+
+    } else {
+        jsonResponse(['error' => 'Step invalide'], 400);
+    }
+}
+
 // --- SCORM PREVIEW ENDPOINTS ---
 
 define('SCORM_DIR', __DIR__ . '/../scorm-packages');
