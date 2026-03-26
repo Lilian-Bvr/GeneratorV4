@@ -12,6 +12,8 @@ define('COMPANY_NAME', 'Elearning');
 // API Keys (keep these secret!)
 define('ELEVENLABS_API_KEY', '');
 define('GEMINI_API_KEY', '');
+define('DEEPL_API_KEY', ''); // DeepL API key (free: api-free.deepl.com, pro: api.deepl.com)
+define('ANTHROPIC_API_KEY', ''); // sk-ant-... from console.anthropic.com
 
 // Session duration in seconds (8 hours)
 define('SESSION_EXPIRY', 8 * 60 * 60);

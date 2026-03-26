@@ -62,6 +62,52 @@
     </div>
   </div>
 
+  <!-- Mode Selector (shown after login) -->
+  <div id="appModeSelector" style="
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    background: #f0f2f5;
+    align-items: center;
+    justify-content: center;
+  ">
+    <div style="max-width:680px; width:90%; text-align:center;">
+      <div style="font-size:36px; margin-bottom:12px;">🧩</div>
+      <h3 style="margin:0 0 8px; color:#222;">Que souhaitez-vous créer ?</h3>
+      <p style="color:#888; margin:0 0 36px; font-size:15px;">Choisissez un mode pour commencer.</p>
+      <div style="display:flex; gap:24px; justify-content:center; flex-wrap:wrap;">
+
+        <div onclick="selectMode('sequenceur')" style="
+          flex:1; min-width:220px; max-width:280px;
+          background:white; border-radius:16px; padding:36px 24px;
+          box-shadow:0 8px 32px rgba(0,0,0,0.10);
+          cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;
+          border:2px solid transparent;
+        " onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 16px 40px rgba(0,0,0,0.14)'"
+           onmouseout="this.style.transform='';this.style.boxShadow='0 8px 32px rgba(0,0,0,0.10)'">
+          <div style="font-size:40px; margin-bottom:16px;">📚</div>
+          <h5 style="margin:0 0 8px; color:#222;">Créer une séquence</h5>
+          <p style="margin:0; color:#888; font-size:13px;">Construisez un module complet avec exercices, audios et vidéos.</p>
+        </div>
+
+        <div onclick="selectMode('cartes')" style="
+          flex:1; min-width:220px; max-width:280px;
+          background:white; border-radius:16px; padding:36px 24px;
+          box-shadow:0 8px 32px rgba(0,0,0,0.10);
+          cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;
+          border:2px solid transparent;
+        " onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 16px 40px rgba(0,0,0,0.14)'"
+           onmouseout="this.style.transform='';this.style.boxShadow='0 8px 32px rgba(0,0,0,0.10)'">
+          <div style="font-size:40px; margin-bottom:16px;">🃏</div>
+          <h5 style="margin:0 0 8px; color:#222;">Créer un jeu de cartes</h5>
+          <p style="margin:0; color:#888; font-size:13px;">Générez un jeu de flashcards prêt à l'emploi.</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <nav class="navbar navbar-light bg-light px-3 mb-0">
     <span class="navbar-brand mb-0 h1">🧩 Générateur de module Storyline</span>
@@ -81,8 +127,331 @@
     </div>
   </nav>
 
+  <!-- Flashcard Generator -->
+  <div id="appCartes" style="display:none;">
+    <div class="container-fluid p-0">
+      <div class="row g-0">
+
+        <!-- LEFT SIDEBAR -->
+        <div class="col-md-3 col-lg-2 sidebar-nav bg-light border-end">
+          <div class="sidebar-content p-3">
+
+            <div class="mb-3">
+              <button class="btn btn-sm btn-outline-secondary w-100 text-start" onclick="selectMode(null)">
+                <i class="bi bi-arrow-left me-1"></i> Retour
+              </button>
+            </div>
+
+            <!-- Title -->
+            <div class="mb-3">
+              <label class="form-label fw-bold small text-muted">TITRE DU JEU</label>
+              <input type="text" id="cartesDeckTitle" class="form-control form-control-sm"
+                     placeholder="Ex: Vocabulaire bancaire">
+            </div>
+
+            <!-- Level -->
+            <div class="mb-3">
+              <label class="form-label fw-bold small text-muted">NIVEAU</label>
+              <select id="cartesDeckLevel" class="form-select form-select-sm">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+              </select>
+            </div>
+
+            <!-- Import -->
+            <div class="mb-3">
+              <label class="form-label fw-bold small text-muted">IMPORTER</label>
+              <input type="file" id="cartesImportInput" accept=".zip" class="form-control form-control-sm"
+                     onchange="importCartes(event)">
+            </div>
+
+            <!-- AI Generation -->
+            <div class="mb-3">
+              <button class="btn btn-sm w-100 btn-outline-primary" onclick="showCartesTab('generate')"
+                      style="border-style:dashed;">
+                <i class="bi bi-stars me-1"></i> Générer avec l'IA
+              </button>
+            </div>
+
+            <hr>
+
+            <!-- Section nav -->
+            <div class="mb-2">
+              <label class="form-label fw-bold small text-muted">SECTIONS</label>
+            </div>
+            <nav class="nav-sections">
+
+              <div class="section-group mb-2">
+                <div class="section-header active" id="cartesSideBtn_courtes" data-section="courtes"
+                     onclick="showCartesTab('courtes')">
+                  <i class="bi bi-chevron-right section-toggle"
+                     onclick="event.stopPropagation(); toggleCartesSection('courtes')"></i>
+                  <i class="bi bi-1-circle text-primary me-2"></i>
+                  <span class="section-name">Flashcards Courtes</span>
+                </div>
+                <ul class="exercise-list" id="cartesNavList_courtes" style="display:none;"></ul>
+                <button class="btn btn-sm btn-outline-primary w-100 add-exercise-btn mt-1"
+                        id="cartesAddBtn_courtes" style="display:none;"
+                        onclick="addCarteCourte()">
+                  <i class="bi bi-plus-circle me-1"></i> Ajouter carte
+                </button>
+              </div>
+
+              <div class="section-group mb-2">
+                <div class="section-header" id="cartesSideBtn_longues" data-section="longues"
+                     onclick="showCartesTab('longues')">
+                  <i class="bi bi-chevron-right section-toggle"
+                     onclick="event.stopPropagation(); toggleCartesSection('longues')"></i>
+                  <i class="bi bi-2-circle text-success me-2"></i>
+                  <span class="section-name">Flashcards Longues</span>
+                </div>
+                <ul class="exercise-list" id="cartesNavList_longues" style="display:none;"></ul>
+                <button class="btn btn-sm btn-outline-success w-100 add-exercise-btn mt-1"
+                        id="cartesAddBtn_longues" style="display:none;"
+                        onclick="addCarteLongue()">
+                  <i class="bi bi-plus-circle me-1"></i> Ajouter carte
+                </button>
+              </div>
+
+              <div class="section-group mb-2">
+                <div class="section-header" id="cartesSideBtn_revision" data-section="revision"
+                     onclick="showCartesTab('revision')">
+                  <i class="bi bi-chevron-right section-toggle"
+                     onclick="event.stopPropagation(); toggleCartesSection('revision')"></i>
+                  <i class="bi bi-3-circle text-warning me-2"></i>
+                  <span class="section-name">R&#233;vision</span>
+                </div>
+                <ul class="exercise-list" id="cartesNavList_revision" style="display:none;"></ul>
+                <button class="btn btn-sm btn-outline-warning w-100 add-exercise-btn mt-1"
+                        id="cartesAddBtn_revision" style="display:none;"
+                        onclick="addCarteRevision()">
+                  <i class="bi bi-plus-circle me-1"></i> Ajouter matching
+                </button>
+              </div>
+
+            </nav>
+
+            <!-- Durations -->
+            <div class="mb-3">
+              <label class="form-label fw-bold small text-muted">DURÉES (minutes)</label>
+              <div class="d-flex gap-2">
+                <div class="flex-fill">
+                  <label class="form-label small mb-1">Courtes</label>
+                  <input type="number" id="cartesDurationCourtes" class="form-control form-control-sm" min="1" max="120" value="5">
+                </div>
+                <div class="flex-fill">
+                  <label class="form-label small mb-1">Longues</label>
+                  <input type="number" id="cartesDurationLongues" class="form-control form-control-sm" min="1" max="120" value="10">
+                </div>
+                <div class="flex-fill">
+                  <label class="form-label small mb-1">Révision</label>
+                  <input type="number" id="cartesDurationRevision" class="form-control form-control-sm" min="1" max="120" value="5">
+                </div>
+              </div>
+            </div>
+
+            <!-- Theme visual picker trigger -->
+            <div class="mb-2">
+              <button class="btn btn-sm btn-outline-secondary w-100" onclick="showCartesTab('theme')">
+                <i class="bi bi-palette me-1"></i> Thème visuel : <span id="cartesThemeLabel">V6</span>
+              </button>
+            </div>
+
+            <hr>
+
+            <button class="btn btn-success w-100" onclick="exportCartes()">
+              <i class="bi bi-download me-1"></i> Exporter
+            </button>
+
+          </div>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="col-md-9 col-lg-10 main-content p-3">
+
+          <!-- COURTES -->
+          <div id="cartesTab_courtes">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="mb-0">Flashcards Courtes</h5>
+              <button id="cartesCourteAddBtn" class="btn btn-primary btn-sm" onclick="addCarteCourte()">+ Carte</button>
+            </div>
+            <div id="cartesWelcome_courtes" class="text-center text-muted py-5">
+              <i class="bi bi-card-list" style="font-size:3rem;opacity:0.2;"></i>
+              <p class="mt-3">Sélectionnez une carte ou ajoutez-en une nouvelle.</p>
+            </div>
+            <div id="carteCourtesList"></div>
+          </div>
+
+          <!-- LONGUES -->
+          <div id="cartesTab_longues" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="mb-0">Flashcards Longues</h5>
+              <button id="cartesLongueAddBtn" class="btn btn-primary btn-sm" onclick="addCarteLongue()">+ Carte</button>
+            </div>
+            <div id="cartesWelcome_longues" class="text-center text-muted py-5">
+              <i class="bi bi-card-list" style="font-size:3rem;opacity:0.2;"></i>
+              <p class="mt-3">Sélectionnez une carte ou ajoutez-en une nouvelle.</p>
+            </div>
+            <div id="carteLonguesList"></div>
+          </div>
+
+          <!-- RÉVISION -->
+          <div id="cartesTab_revision" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="mb-0">R&#233;vision</h5>
+              <button id="cartesRevisionAddBtn" class="btn btn-primary btn-sm" onclick="addCarteRevision()">+ Matching</button>
+            </div>
+            <div id="cartesWelcome_revision" class="text-center text-muted py-5">
+              <i class="bi bi-card-list" style="font-size:3rem;opacity:0.2;"></i>
+              <p class="mt-3">Sélectionnez un matching ou ajoutez-en un nouveau.</p>
+            </div>
+            <div id="carteRevisionList"></div>
+          </div>
+
+          <!-- THEME PICKER -->
+          <div id="cartesTab_theme" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h5 class="mb-0"><i class="bi bi-palette me-2"></i>Choisissez un thème visuel</h5>
+              <button class="btn btn-sm btn-outline-secondary" onclick="showCartesTab('courtes')">
+                <i class="bi bi-arrow-left me-1"></i> Retour
+              </button>
+            </div>
+            <div class="row g-3">
+              <div class="col-6 col-lg-3">
+                <div class="carte-theme-card" id="themeCard_V3" onclick="setCarteTheme('V3')">
+                  <div class="carte-theme-preview">
+                    <img src="Modele/Images_Flashcards/V3/Flashcards_Courtes/5W58HS3AJ2E.jpg" alt="Thème V3">
+                    <img src="Modele/Images_Flashcards/V3/Flashcards_Longues/5k3S7tf1xGz.jpg" alt="Thème V3 Longue">
+                  </div>
+                  <div class="carte-theme-label">V3</div>
+                </div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="carte-theme-card" id="themeCard_V4" onclick="setCarteTheme('V4')">
+                  <div class="carte-theme-preview">
+                    <img src="Modele/Images_Flashcards/V4/Flashcards_Courtes/5W58HS3AJ2E.jpg" alt="Thème V4">
+                    <img src="Modele/Images_Flashcards/V4/Flashcards_Longues/5k3S7tf1xGz.jpg" alt="Thème V4 Longue">
+                  </div>
+                  <div class="carte-theme-label">V4</div>
+                </div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="carte-theme-card" id="themeCard_V5" onclick="setCarteTheme('V5')">
+                  <div class="carte-theme-preview">
+                    <img src="Modele/Images_Flashcards/V5/Flashcards_Courtes/5W58HS3AJ2E.jpg" alt="Thème V5">
+                    <img src="Modele/Images_Flashcards/V5/Flashcards_Longues/5k3S7tf1xGz.jpg" alt="Thème V5 Longue">
+                  </div>
+                  <div class="carte-theme-label">V5</div>
+                </div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="carte-theme-card active" id="themeCard_V6" onclick="setCarteTheme('V6')">
+                  <div class="carte-theme-preview">
+                    <img src="Modele/Images_Flashcards/V6/Flashcards_Courtes/5W58HS3AJ2E.jpg" alt="Thème V6">
+                    <img src="Modele/Images_Flashcards/V6/Flashcards_Longues/5k3S7tf1xGz.jpg" alt="Thème V6 Longue">
+                  </div>
+                  <div class="carte-theme-label">V6</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI GENERATION PANEL -->
+          <div id="cartesTab_generate" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h5 class="mb-0"><i class="bi bi-stars me-2"></i>Générer avec l'IA</h5>
+              <button class="btn btn-sm btn-outline-secondary" onclick="showCartesTab('courtes')">
+                <i class="bi bi-arrow-left me-1"></i> Retour
+              </button>
+            </div>
+
+            <!-- STEP 1: Parameters -->
+            <div id="aiGenStep1">
+              <div class="card border-0 bg-light p-4 mb-3" style="border-radius:12px;">
+                <div class="row g-3">
+                  <div class="col-md-8">
+                    <label class="form-label fw-bold small text-muted">THÈME DE LA LEÇON</label>
+                    <input type="text" id="aiGenTheme" class="form-control"
+                           placeholder="Ex: La réunion de projet, Les opérations de virement…">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">NIVEAU</label>
+                    <select id="aiGenNiveau" class="form-select">
+                      <option value="1">1 — Grand débutant (A1)</option>
+                      <option value="2">2 — Débutant (A1-A2)</option>
+                      <option value="3" selected>3 — Intermédiaire faible (A2)</option>
+                      <option value="4">4 — Intermédiaire (B1)</option>
+                      <option value="5">5 — Intermédiaire avancé (B1-B2)</option>
+                    </select>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label fw-bold small text-muted">CONTRAINTES SPÉCIFIQUES <span class="fw-normal">(optionnel)</span></label>
+                    <textarea id="aiGenContraintes" class="form-control" rows="2"
+                      placeholder="Ex: inclure 'normaliser le bilan', focus sur le registre formel, éviter le subjonctif…"></textarea>
+                  </div>
+                </div>
+                <div class="mt-3 d-flex gap-2">
+                  <button class="btn btn-primary" onclick="aiGenerateExpressions()">
+                    <i class="bi bi-stars me-1"></i> Générer les expressions
+                  </button>
+                  <div id="aiGenStep1Spinner" class="spinner-border spinner-border-sm text-primary align-self-center" style="display:none!important;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- STEP 2: Review expressions -->
+            <div id="aiGenStep2" style="display:none;">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0 fw-bold">Étape 1 — Vérifiez les expressions</h6>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-sm btn-outline-secondary" onclick="aiBackToStep1()">
+                    <i class="bi bi-arrow-left me-1"></i> Modifier les paramètres
+                  </button>
+                  <button class="btn btn-sm btn-outline-primary" onclick="aiGenerateExpressions()">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Regénérer tout
+                  </button>
+                </div>
+              </div>
+              <div class="small text-muted mb-3">Modifiez les expressions si besoin, puis validez pour générer les phrases de contexte.</div>
+              <div id="aiGenExpressionsTable"></div>
+              <div class="mt-3 d-flex gap-2 align-items-center">
+                <button class="btn btn-success" onclick="aiGenerateSentences()">
+                  <i class="bi bi-arrow-right me-1"></i> Valider et générer les phrases
+                </button>
+                <div id="aiGenStep2Spinner" class="spinner-border spinner-border-sm text-success align-self-center" style="display:none!important;"></div>
+              </div>
+            </div>
+
+            <!-- STEP 3: Review sentences + populate -->
+            <div id="aiGenStep3" style="display:none;">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0 fw-bold">Étape 2 — Vérifiez les phrases de contexte</h6>
+                <button class="btn btn-sm btn-outline-secondary" onclick="aiBackToStep2()">
+                  <i class="bi bi-arrow-left me-1"></i> Modifier les expressions
+                </button>
+              </div>
+              <div class="small text-muted mb-3">Ces phrases apparaîtront sur la face arrière des Flashcards Longues.</div>
+              <div id="aiGenSentencesTable"></div>
+              <div class="mt-4 d-flex gap-2 align-items-center">
+                <button class="btn btn-success btn-lg" onclick="aiPopulateCards()">
+                  <i class="bi bi-check-circle me-1"></i> Créer les flashcards
+                </button>
+                <span class="text-muted small">Remplacera le contenu actuel de toutes les sections.</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Main Layout: Sidebar + Content -->
-  <div class="container-fluid p-0">
+  <div id="appSequenceur" class="container-fluid p-0" style="display:none;">
     <div class="row g-0">
       
       <!-- ========================================
@@ -397,9 +766,9 @@
   </div>
 
   <!-- Fixed Action Bar -->
-  <div id="fixedActionBar" class="fixed-bottom d-flex justify-content-center align-items-center gap-3 p-3 border-top bg-light shadow-lg">
-    <button class="btn btn-success" onclick="generatePackage()">💾 Exporter</button>
-    <button class="btn btn-primary" onclick="previewWithLocalServer()"><i class="bi bi-play-circle me-1"></i> Prévisualiser</button>
+  <div id="fixedActionBar" class="fixed-bottom d-flex justify-content-center align-items-center gap-3 p-3 border-top bg-light shadow-lg" style="display:none;">
+    <button class="btn btn-success" onclick="handleBottomExport()">💾 Exporter</button>
+    <button class="btn btn-primary" onclick="handleBottomPreview()"><i class="bi bi-play-circle me-1"></i> Prévisualiser</button>
   </div>
 
   <script src="script.js"></script>

@@ -184,17 +184,95 @@ function clearSession() {
 
 function updateLoginUI(loggedIn) {
   const gate = document.getElementById('appLoginGate');
+  const modeSelector = document.getElementById('appModeSelector');
   const loggedBadge = document.getElementById('companyLoggedBadge');
   const nameLabel = document.getElementById('companyNameLabel');
+  const fixedBar = document.getElementById('fixedActionBar');
   if (loggedIn) {
     if (gate) gate.style.display = 'none';
+    if (modeSelector) { modeSelector.style.display = 'flex'; }
     if (loggedBadge) loggedBadge.style.display = 'flex';
     if (nameLabel) nameLabel.textContent = companyName;
+    if (fixedBar) fixedBar.style.display = 'none'; // hidden until sequenceur mode selected
   } else {
     if (gate) gate.style.display = 'flex';
+    if (modeSelector) modeSelector.style.display = 'none';
+    document.getElementById('appSequenceur').style.display = 'none';
+    document.getElementById('appCartes').style.display = 'none';
     if (loggedBadge) loggedBadge.style.display = 'none';
-    // Focus the password field
+    if (fixedBar) fixedBar.style.display = 'none';
     setTimeout(() => document.getElementById('gatePasswordInput')?.focus(), 50);
+  }
+}
+
+function selectMode(mode) {
+  const modeSelector = document.getElementById('appModeSelector');
+  const fixedBar = document.getElementById('fixedActionBar');
+  document.getElementById('appSequenceur').style.display = 'none';
+  document.getElementById('appCartes').style.display = 'none';
+  if (!mode) {
+    if (modeSelector) modeSelector.style.display = 'flex';
+    if (fixedBar) fixedBar.style.display = 'none';
+  } else {
+    if (modeSelector) modeSelector.style.display = 'none';
+    if (mode === 'sequenceur') {
+      document.getElementById('appSequenceur').style.display = 'block';
+      if (fixedBar) fixedBar.style.display = 'flex';
+    } else if (mode === 'cartes') {
+      document.getElementById('appCartes').style.display = 'block';
+      if (fixedBar) fixedBar.style.display = 'none';
+      _initCartesMode();
+    }
+  }
+}
+
+function _initCartesMode() {
+  // Show/hide add buttons based on fixed-count mode
+  const addBtnIds = ['cartesAddBtn_courtes', 'cartesAddBtn_longues', 'cartesAddBtn_revision'];
+  addBtnIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = CARTES_FIXED_COUNT !== null ? 'none' : '';
+  });
+  // Also hide the "+ Carte / + Matching" buttons in the tab headers
+  ['cartesCourteAddBtn', 'cartesLongueAddBtn', 'cartesRevisionAddBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = CARTES_FIXED_COUNT !== null ? 'none' : '';
+  });
+
+  if (CARTES_FIXED_COUNT === null) return;
+
+  // Auto-populate each section to CARTES_FIXED_COUNT if currently empty
+  const count = CARTES_FIXED_COUNT;
+  const empty = (listId, prefix) =>
+    document.querySelectorAll(`#${listId} [id^="${prefix}"]`).length === 0;
+
+  if (empty('carteCourtesList', 'carteCourte_')) {
+    for (let i = 0; i < count; i++) addCarteCourte();
+    showCarteCard('courtes', null);
+  }
+  if (empty('carteLonguesList', 'carteLongue_')) {
+    for (let i = 0; i < count; i++) addCarteLongue();
+    showCarteCard('longues', null);
+  }
+  if (empty('carteRevisionList', 'carteRevision_')) {
+    for (let i = 0; i < count; i++) addCarteRevision();
+    showCarteCard('revision', null);
+  }
+}
+
+function handleBottomExport() {
+  if (document.getElementById('appCartes')?.style.display !== 'none') {
+    exportCartes();
+  } else {
+    generatePackage();
+  }
+}
+
+function handleBottomPreview() {
+  if (document.getElementById('appCartes')?.style.display !== 'none') {
+    previewCartes();
+  } else {
+    previewWithLocalServer();
   }
 }
 
@@ -323,6 +401,14 @@ const activityTypesConfig = {
     feedback: [],
     hasAudio: true,
     hasImage: true
+  },
+
+  "Media": {
+    label: "Media",
+    feedback: [],
+    hasImage: false,
+    hasAudio: false,
+    hasVideo: false
   }
 
   /*  ==============================================
@@ -516,6 +602,9 @@ function reorderExercises(section) {
 
     const videoToggle = exo.querySelector(`#videoSwitch_${newId}`);
     if (videoToggle) videoToggle.setAttribute("onchange", `toggleVideoField('${newId}')`);
+
+    const mediaTypeSelect = exo.querySelector(`#mediaType_${newId}`);
+    if (mediaTypeSelect) mediaTypeSelect.setAttribute("onchange", `updateMediaTypeFields('${newId}')`);
 
     // 🗃 Synchronisation des blobs images/audios pour cette section
     const oldNum = oldId.split("_")[1];
@@ -815,6 +904,53 @@ function updateFields(id) {
     `;
   }
   // =====================================================
+  // MEDIA
+  // =====================================================
+  else if (type === "Media") {
+    html = `
+      <label>Type de média</label>
+      <select id="mediaType_${id}" class="form-select mb-3" onchange="updateMediaTypeFields('${id}')">
+        <option value="video">Vidéo</option>
+        <option value="image_audio">Image + Audio</option>
+      </select>
+
+      <div id="mediaVideoSection_${id}">
+        <label class="form-label">Vidéo</label>
+        <div id="videoContainer_${id}">
+          <div id="videoButtonsWrapper_${id}" class="d-flex gap-2 mb-2">
+            <input type="file" accept="video/*" onchange="handleVideoUpload(event, '${id}')" id="videoInput_${id}" style="display:none;">
+            <button class="btn btn-outline-secondary" type="button" onclick="document.getElementById('videoInput_${id}').click()">📁 Browse</button>
+          </div>
+          <div id="videoTranscriptionWrapper_${id}" class="mt-2">
+            <label class="form-label small mb-1 text-muted">Transcription <span class="fw-normal">(optionnel)</span></label>
+            <textarea id="videoTranscription_${id}" class="form-control form-control-sm" rows="2" placeholder="Transcription du contenu vidéo..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div id="mediaImageAudioSection_${id}" style="display:none;">
+        <label class="form-label">Image</label>
+        <div id="imageContainer_${id}" class="mb-3">
+          <input type="file" accept="image/*" id="imageInput_${id}" style="display:none;" onchange="handleImageUpload(event, '${id}')">
+          <button class="btn btn-outline-secondary" type="button" onclick="document.getElementById('imageInput_${id}').click()">📁 Browse</button>
+        </div>
+        <label class="form-label">Audio</label>
+        <div id="audioContainer_${id}">
+          ${createDualAudioButtons(
+            `audioInput_${id}_main`,
+            `handleMainAudioUpload(event, '${id}')`,
+            `openElevenLabsForMainAudio('${id}')`,
+            `openRecorderForMainAudio('${id}')`
+          )}
+          <div id="audioTranscriptionWrapper_${id}" class="mt-2">
+            <label class="form-label small mb-1 text-muted">Transcription <span class="fw-normal">(optionnel)</span></label>
+            <textarea id="audioTranscription_${id}" class="form-control form-control-sm" rows="2" placeholder="Transcription du contenu audio..."></textarea>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // =====================================================
   // (si aucun type sélectionné)
   // =====================================================
   else {
@@ -827,6 +963,15 @@ function updateFields(id) {
 
 
 /*  ======  Gestion des sous-types d'activités  ======  */
+
+//  MEDIA  //
+function updateMediaTypeFields(id) {
+  const type = document.getElementById(`mediaType_${id}`)?.value;
+  const videoSection = document.getElementById(`mediaVideoSection_${id}`);
+  const imageAudioSection = document.getElementById(`mediaImageAudioSection_${id}`);
+  if (videoSection) videoSection.style.display = type === 'video' ? 'block' : 'none';
+  if (imageAudioSection) imageAudioSection.style.display = type === 'image_audio' ? 'block' : 'none';
+}
 
 //  MATCHING  //
 function updateMatchingFields(id) {
@@ -1273,7 +1418,10 @@ function updateFlashcardFields(id) {
   // ==========================================================
   if (type === "courte") {
     html += `
-      <label>Texte de la face avant</label>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <label class="mb-0">Texte de la face avant</label>
+        <button type="button" class="btn btn-sm btn-outline-info" id="translateFlashFrontBtn_${id}" data-fid="${id}" onclick="translateFlashFront(this.dataset.fid)">🌐 Traduire depuis la face arrière</button>
+      </div>
       <textarea id="front_${id}" class="form-control mb-2"
         placeholder="Texte de la face avant (anglais)">${devMode ? "How are you?" : ""}</textarea>
 
@@ -1281,7 +1429,7 @@ function updateFlashcardFields(id) {
       <textarea id="back_${id}" class="form-control mb-2"
         placeholder="Texte de la face arrière (français)">${devMode ? "Comment vas-tu ?" : ""}</textarea>
 
-      <label>Audio face arrière</label>
+      <label>Audio face arrière (identique au texte)</label>
       ${createDualAudioButtons(
         `audioFlashInput_${id}_back`,
         `handleFlashcardAudioUpload(event, '${id}', 'back')`,
@@ -1300,7 +1448,7 @@ function updateFlashcardFields(id) {
       <textarea id="front_${id}" class="form-control mb-2"
         placeholder="Texte de la face avant (mot ou expression)">${devMode ? "To relax" : ""}</textarea>
 
-      <label>Audio face avant</label>
+      <label>Audio face avant (identique au texte)</label>
       ${createDualAudioButtons(
         `audioFlashInput_${id}_front`,
         `handleFlashcardAudioUpload(event, '${id}', 'front')`,
@@ -1312,7 +1460,7 @@ function updateFlashcardFields(id) {
       <textarea id="back_${id}" class="form-control mb-2"
         placeholder="Texte de la face arrière (phrase complète)">${devMode ? "I like to relax on weekends." : ""}</textarea>
 
-      <label>Audio face arrière</label>
+      <label>Audio face arrière (identique au texte)</label>
       ${createDualAudioButtons(
         `audioFlashInput_${id}_back`,
         `handleFlashcardAudioUpload(event, '${id}', 'back')`,
@@ -1484,7 +1632,7 @@ function updateLessonFields(id) {
       
       <!-- 🎧 Audio pour l'expression -->
       <div class="mb-3 border rounded p-2 bg-light">
-        <label class="form-label mb-1">Audio de l'expression</label>
+        <label class="form-label mb-1">Audio de l'expression (identique au texte)</label>
         ${createDualAudioButtons(
           `audioExprFrInput_${id}`,
           `handleLessonExprAudioUpload(event, '${id}')`,
@@ -1493,7 +1641,10 @@ function updateLessonFields(id) {
         )}
       </div>
       
-      <label>Traduction (anglais)</label>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <label class="mb-0">Traduction (anglais)</label>
+        <button type="button" class="btn btn-sm btn-outline-info" id="translateExprBtn_${id}" onclick="translateLessonExpr('${id}')">🌐 Traduire</button>
+      </div>
       <input type="text" id="lessonExprEn_${id}" class="form-control mb-3"
         placeholder="Traduction anglaise" value="${devMode ? "To take a break" : ""}">
 
@@ -1504,7 +1655,7 @@ function updateLessonFields(id) {
 
       <!-- 🎧 Audio pour l'exemple -->
       <div class="mb-3 border rounded p-2 bg-light">
-        <label class="form-label mb-1">Audio de l'exemple en français</label>
+        <label class="form-label mb-1">Audio de l'exemple en français (identique au texte)</label>
         ${createDualAudioButtons(
           `audioExFrInput_${id}`,
           `handleLessonExampleAudioUpload(event, '${id}')`,
@@ -1513,7 +1664,10 @@ function updateLessonFields(id) {
         )}
       </div>
 
-      <label>Traduction de l’exemple en anglais</label>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <label class="mb-0">Traduction de l’exemple en anglais</label>
+        <button type="button" class="btn btn-sm btn-outline-info" id="translateExBtn_${id}" data-exid="${id}" onclick="translateLessonExample(this.dataset.exid)">🌐 Traduire</button>
+      </div>
       <input type="text" id="lessonExEn_${id}" class="form-control mb-2"
         placeholder="Traduction de l’exemple" value="${devMode ? "I take a break after lunch." : ""}">
     `;
@@ -1619,7 +1773,7 @@ function buildLessonGrid(id) {
               class="form-control form-control-sm mb-1" 
               placeholder="Texte">
 
-            <small class="text-muted">Audio :</small>
+            <small class="text-muted">Audio (identique au texte) :</small>
             ${createDualAudioButtons(
               `lessonCellAudioInput_${id}_LessonTable_L${r}_C${c}`,
               `handleLessonAudioUpload(event, '${id}_LessonTable_L${r}_C${c}')`,
@@ -2304,8 +2458,10 @@ function addAudioPreviewWithDelete(targetInput, blob, previewId, deleteCallback)
     wrapper.appendChild(audio);
     wrapper.appendChild(btn);
 
-    // ✅ Insert at END of container (after buttons)
-    container.appendChild(wrapper);
+    // Insert before transcription wrapper if present, otherwise at end
+    const transcWrapper = container.querySelector('[id^="audioTranscriptionWrapper_"]');
+    if (transcWrapper) container.insertBefore(wrapper, transcWrapper);
+    else container.appendChild(wrapper);
 
   } else {
     // ❌ FALLBACK: Old behavior for compatibility with special cases
@@ -2410,8 +2566,10 @@ function addVideoPreviewWithDelete(targetInput, blob, id) {
   wrapper.appendChild(video);
   wrapper.appendChild(btn);
 
-  // Insert at the END of the container (after buttons)
-  container.appendChild(wrapper);
+  // Insert before transcription wrapper if present, otherwise at end
+  const transcWrapper = container.querySelector(`#videoTranscriptionWrapper_${id}`);
+  if (transcWrapper) container.insertBefore(wrapper, transcWrapper);
+  else container.appendChild(wrapper);
 }
 
 /*  ======  Éditeur vidéo (Trim)  ======  */
@@ -2781,6 +2939,21 @@ function addRecapAudioPreviewWithDelete(targetInput, blob, section, index) {
 
 
 /*  ======  Construction et preview JSON  ======  */
+
+// Wraps a main audio path + optional transcription textarea into the Audio_Enonce object.
+// Returns null if no audio. Always reads transcription from the DOM textarea.
+function _buildAudioEnonce(id, filePath) {
+  if (!filePath) return null;
+  const transcription = document.getElementById(`audioTranscription_${id}`)?.value?.trim() || null;
+  return { Fichier: filePath, Transcription: transcription };
+}
+
+function _buildVideoEnonce(id, filePath) {
+  if (!filePath) return null;
+  const transcription = document.getElementById(`videoTranscription_${id}`)?.value?.trim() || null;
+  return { Fichier: filePath, Transcription: transcription };
+}
+
 function buildResult() {
   const title = document.getElementById("chapterTitle").value.trim() || "Parcours sans nom";
   const level = Number(document.getElementById("chapterLevel")?.value || 1);
@@ -2901,8 +3074,8 @@ function buildResult() {
           Feedback: feedbackData,
           Tentatives: tentatives,
           Image: imagePath,
-          Video: videoPath,
-          Audio_Enonce: audioEnonce
+          Video: _buildVideoEnonce(id, videoPath),
+          Audio_Enonce: _buildAudioEnonce(id, audioEnonce)
         };
         continue;
       }
@@ -2930,8 +3103,8 @@ function buildResult() {
           Feedback: feedbackData,
           Tentatives: tentatives,
           Image: imagePath,
-          Video: videoPath,
-          Audio_Enonce: audioEnonce
+          Video: _buildVideoEnonce(id, videoPath),
+          Audio_Enonce: _buildAudioEnonce(id, audioEnonce)
         };
         continue;
       }
@@ -2962,8 +3135,8 @@ function buildResult() {
           Feedback: feedbackData,
           Tentatives: tentatives,
           Image: imagePath,
-          Video: videoPath,
-          Audio_Enonce: audioEnonce
+          Video: _buildVideoEnonce(id, videoPath),
+          Audio_Enonce: _buildAudioEnonce(id, audioEnonce)
         };
         continue;
       }
@@ -3007,7 +3180,7 @@ function buildResult() {
           Feedback: feedbackData,
           Match_Type: matchType,
           Tentatives: tentatives,
-          Audio_Enonce: audioEnonce,
+          Audio_Enonce: _buildAudioEnonce(id, audioEnonce),
           Paires: paires
         };
         continue;
@@ -3043,7 +3216,7 @@ function buildResult() {
             Options: options,
             Feedback: feedbackData,
             Tentatives: tentatives,
-            Audio_Enonce: audioEnonce
+            Audio_Enonce: _buildAudioEnonce(id, audioEnonce)
           };
         }
         else if (completeType === "reconstruit") {
@@ -3069,7 +3242,7 @@ function buildResult() {
             Options: options,
             Feedback: feedbackData,
             Tentatives: tentatives,
-            Audio_Enonce: audioEnonce
+            Audio_Enonce: _buildAudioEnonce(id, audioEnonce)
           };
         }
 
@@ -3267,9 +3440,26 @@ function buildResult() {
           Consigne: consigne,
           Tentatives: tentatives,
           Image: imagePath,
-          Audio_Enonce: audioEnonce,
+          Audio_Enonce: _buildAudioEnonce(id, audioEnonce),
           Script: lignes,
           Script_HTML: scriptHTML,
+        };
+        continue;
+      }
+
+      // =====================================================
+      // MEDIA
+      // =====================================================
+      if (type === "Media") {
+        const mediaType = document.getElementById(`mediaType_${id}`)?.value || "video";
+        const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
+
+        sectionsData[s][`EX${i}`] = {
+          Type: "Media",
+          Media_Type: mediaType,
+          Image: mediaType === "image_audio" ? imagePath : null,
+          Video: mediaType === "video" ? _buildVideoEnonce(id, videoPath) : null,
+          Audio_Enonce: mediaType === "image_audio" ? _buildAudioEnonce(id, audioEnonce) : null
         };
         continue;
       }
@@ -3384,13 +3574,13 @@ function buildSingleExerciseResult(id) {
     const affirmation = document.getElementById(`enonce_${id}`)?.value || "";
     const truth = document.getElementById(`truth_${id}`)?.value || "True";
     const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
-    exData = { Type: "True or false", Consigne: consigne, Affirmation: affirmation, BonneReponse: truth, Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: videoPath, Audio_Enonce: audioEnonce };
+    exData = { Type: "True or false", Consigne: consigne, Affirmation: affirmation, BonneReponse: truth, Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: _buildVideoEnonce(id, videoPath), Audio_Enonce: _buildAudioEnonce(id, audioEnonce) };
   }
   else if (type === "QCU") {
     const question = document.getElementById(`enonce_${id}`)?.value || "";
     const reponses = { A: document.getElementById(`qcuA_${id}`)?.value || "", B: document.getElementById(`qcuB_${id}`)?.value || "", C: document.getElementById(`qcuC_${id}`)?.value || "", D: document.getElementById(`qcuD_${id}`)?.value || "" };
     const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
-    exData = { Type: "QCU", Consigne: consigne, Question: question, Reponses: reponses, BonneReponse: "A", Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: videoPath, Audio_Enonce: audioEnonce };
+    exData = { Type: "QCU", Consigne: consigne, Question: question, Reponses: reponses, BonneReponse: "A", Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: _buildVideoEnonce(id, videoPath), Audio_Enonce: _buildAudioEnonce(id, audioEnonce) };
   }
   else if (type === "QCM") {
     const question = document.getElementById(`enonce_${id}`)?.value || "";
@@ -3401,7 +3591,7 @@ function buildSingleExerciseResult(id) {
       reponses[letter] = document.getElementById(`qcm${letter}_${id}`)?.value || "";
       if (document.getElementById(`qcmCheck_${letter}_${id}`)?.checked) corrections.push(letter);
     });
-    exData = { Type: "QCM", Consigne: consigne, Question: question, Reponses: reponses, Corrections: corrections, Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: videoPath, Audio_Enonce: audioEnonce };
+    exData = { Type: "QCM", Consigne: consigne, Question: question, Reponses: reponses, Corrections: corrections, Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: _buildVideoEnonce(id, videoPath), Audio_Enonce: _buildAudioEnonce(id, audioEnonce) };
   }
   else if (type === "Matching") {
     const matchConsigne = document.getElementById(`consigne_${id}`)?.value || "";
@@ -3420,7 +3610,7 @@ function buildSingleExerciseResult(id) {
         : document.getElementById(`matchText_${id}_R${p}`)?.value || "";
       paires[`P${p}`] = { [leftKey]: leftValue, [rightKey]: rightValue };
     }
-    exData = { Type: "Matching", Consigne: matchConsigne, Feedback: feedbackData, Match_Type: matchType, Tentatives: tentatives, Audio_Enonce: audioEnonce, Paires: paires };
+    exData = { Type: "Matching", Consigne: matchConsigne, Feedback: feedbackData, Match_Type: matchType, Tentatives: tentatives, Audio_Enonce: _buildAudioEnonce(id, audioEnonce), Paires: paires };
   }
   else if (type === "Complete") {
     const completeType = document.getElementById(`completeType_${id}`)?.value || "";
@@ -3436,7 +3626,7 @@ function buildSingleExerciseResult(id) {
     if (previewEl && previewEl.textContent && previewEl.textContent !== "(prévisualisation)") {
       texteIncomplet = previewEl.textContent;
     }
-    exData = { Type: "Complete", Complete_Type: completeType, Consigne: consigne, Texte_Complet: texteComplet, Texte_Incomplet: texteIncomplet, Options: options, Feedback: feedbackData, Tentatives: tentatives, Audio_Enonce: audioEnonce };
+    exData = { Type: "Complete", Complete_Type: completeType, Consigne: consigne, Texte_Complet: texteComplet, Texte_Incomplet: texteIncomplet, Options: options, Feedback: feedbackData, Tentatives: tentatives, Audio_Enonce: _buildAudioEnonce(id, audioEnonce) };
   }
   else if (type === "Flashcard") {
     const flashType = document.getElementById(`flashcardType_${id}`)?.value || "";
@@ -3517,7 +3707,18 @@ function buildSingleExerciseResult(id) {
       });
     }
     const scriptHTML = lignes.map(l => `<b>${l.Nom} :</b> ${l.Texte}<br><br>`).join("");
-    exData = { Type: "Dialogue", Consigne: dialogueConsigne, Tentatives: dialogueTentatives, Image: imagePath, Audio_Enonce: audioEnonce, Script: lignes, Script_HTML: scriptHTML };
+    exData = { Type: "Dialogue", Consigne: dialogueConsigne, Tentatives: dialogueTentatives, Image: imagePath, Audio_Enonce: _buildAudioEnonce(id, audioEnonce), Script: lignes, Script_HTML: scriptHTML };
+  }
+  else if (type === "Media") {
+    const mediaType = document.getElementById(`mediaType_${id}`)?.value || "video";
+    const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
+    exData = {
+      Type: "Media",
+      Media_Type: mediaType,
+      Image: mediaType === "image_audio" ? (imagesData[origMediaKey] ? `Ressources_Sequences/S1/Images/S1_EX1.jpg` : null) : null,
+      Video: mediaType === "video" ? _buildVideoEnonce(id, videoPath) : null,
+      Audio_Enonce: mediaType === "image_audio" ? _buildAudioEnonce(id, audioEnonce) : null
+    };
   }
   else if (type === "Production orale - dictée") {
     const dicteeConsigne = document.getElementById(`consigne_${id}`)?.value || "";
@@ -4174,6 +4375,16 @@ async function importZipProject(event) {
 
             break;
 
+          case "Media":
+            if (exoData.Media_Type) {
+              const mediaTypeEl = document.getElementById(`mediaType_${id}`);
+              if (mediaTypeEl) {
+                mediaTypeEl.value = exoData.Media_Type;
+                updateMediaTypeFields(id);
+              }
+            }
+            break;
+
           case "Dialogue":
             console.log(`💬 [${id}] Import du Dialogue`);
 
@@ -4197,9 +4408,19 @@ async function importZipProject(event) {
 
         }
 
+        // Restore transcription (new format only — old format has Audio_Enonce as a plain string)
+        if (exoData.Audio_Enonce && typeof exoData.Audio_Enonce === 'object' && exoData.Audio_Enonce.Transcription) {
+          const transcEl = document.getElementById(`audioTranscription_${id}`);
+          if (transcEl) transcEl.value = exoData.Audio_Enonce.Transcription;
+        }
+        if (exoData.Video && typeof exoData.Video === 'object' && exoData.Video.Transcription) {
+          const transcEl = document.getElementById(`videoTranscription_${id}`);
+          if (transcEl) transcEl.value = exoData.Video.Transcription;
+        }
+
         //============================================================
         //   📁 MÉDIAS
-        //============================================================ 
+        //============================================================
         const exNum = parseInt(exoKey.replace("EX", ""));
         const exKey = `${s}_EX${exNum}`;
 
@@ -4828,6 +5049,13 @@ function createAudioToggle(id) {
       </div>
       
       <!-- Preview will be inserted here (separate from buttons) -->
+
+      <!-- Transcription — preview is inserted BEFORE this div -->
+      <div id="audioTranscriptionWrapper_${id}" class="mt-2">
+        <label class="form-label small mb-1 text-muted">Transcription de l'audio</label>
+        <textarea id="audioTranscription_${id}" class="form-control form-control-sm" rows="2"
+          placeholder="Transcription du contenu audio..."></textarea>
+      </div>
     </div>
   `;
 }
@@ -4890,6 +5118,11 @@ function createVideoToggle(id) {
       </div>
       
       <!-- ✅ Preview will be inserted here (separate from buttons) -->
+
+      <div id="videoTranscriptionWrapper_${id}" class="mt-2">
+        <label class="form-label small mb-1 text-muted">Transcription de la vidéo <span class="fw-normal">(optionnel)</span></label>
+        <textarea id="videoTranscription_${id}" class="form-control form-control-sm" rows="2" placeholder="Transcription du contenu vidéo..."></textarea>
+      </div>
     </div>
   `;
 }
@@ -4974,18 +5207,21 @@ function createFullFeedback(id) {
       <label>Correction (langue cible)</label>
       <div id="feedbackCorrection_${id}" class="quill-editor mb-2">${devMode ? "Je vais au bureau tous les jours." : ""}</div>
 
-      <label>Traduction</label>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <label class="mb-0">Traduction</label>
+        <button type="button" class="btn btn-sm btn-outline-info" id="translateTradBtn_${id}" onclick="translateFeedbackTrad(‘${id}’)">🌐 Traduire</button>
+      </div>
       <div id="feedbackTrad_${id}" class="quill-editor mb-2">${devMode ? "Je vais au bureau tous les jours." : ""}</div>
 
       <div class="form-check form-switch mb-2">
-        <input class="form-check-input" type="checkbox" id="feedbackAudioSwitch_${id}" onchange="toggleFeedbackAudio('${id}')">
+        <input class="form-check-input" type="checkbox" id="feedbackAudioSwitch_${id}" onchange="toggleFeedbackAudio(‘${id}’)">
         <label class="form-check-label" for="feedbackAudioSwitch_${id}">Ajouter un audio de la correction</label>
       </div>
 
       <div id="feedbackAudioContainer_${id}" style="display:none;">
         <label>Audio de la correction</label>
         <input type="file" accept="audio/*" class="form-control mb-2"
-          onchange="handleFeedbackAudioUpload(event, '${id}')">
+          onchange="handleFeedbackAudioUpload(event, ‘${id}’)">
       </div>
 
       <label>Phrase de feedback</label>
@@ -5028,7 +5264,10 @@ function updateFeedbackFields(id, preserveContent = false) {
           <label>Correction (langue cible)</label>
           <div id="feedbackCorrection_${id}" class="quill-editor mb-2"></div>
 
-          <label>Traduction</label>
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <label class="mb-0">Traduction</label>
+            <button type="button" class="btn btn-sm btn-outline-info" id="translateTradBtn_${id}" onclick="translateFeedbackTrad('${id}')">🌐 Traduire</button>
+          </div>
           <div id="feedbackTrad_${id}" class="quill-editor mb-2"></div>
 
           <div class="form-check form-switch mb-2">
@@ -5104,6 +5343,65 @@ function toggleFeedbackAudio(id) {
     }
   }
 }
+async function _callDeepL(text, btnEl) {
+  if (!text) { alert('Le champ source est vide.'); return null; }
+  if (btnEl) { btnEl.disabled = true; btnEl.dataset.origText = btnEl.textContent; btnEl.textContent = '⏳'; }
+  try {
+    const res = await fetch('/api/deepl/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+      body: JSON.stringify({ text, target_lang: 'EN' })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+    const translated = data.translations?.[0]?.text;
+    if (!translated) throw new Error('Réponse inattendue de DeepL');
+    return translated;
+  } catch (e) {
+    alert(`Erreur de traduction : ${e.message}`);
+    return null;
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl.dataset.origText || '🌐 Traduire'; }
+  }
+}
+
+async function translateFeedbackTrad(id) {
+  const corrEl = document.querySelector(`#feedbackCorrection_${id} .ql-editor`);
+  const text = corrEl?.innerText?.trim();
+  const btn = document.getElementById(`translateTradBtn_${id}`);
+  const translated = await _callDeepL(text, btn);
+  if (!translated) return;
+  const tradEl = document.querySelector(`#feedbackTrad_${id} .ql-editor`);
+  if (tradEl) tradEl.innerHTML = `<p>${translated}</p>`;
+}
+
+async function translateLessonExpr(id) {
+  const text = document.getElementById(`lessonExprFr_${id}`)?.value?.trim();
+  const btn = document.getElementById(`translateExprBtn_${id}`);
+  const translated = await _callDeepL(text, btn);
+  if (!translated) return;
+  const target = document.getElementById(`lessonExprEn_${id}`);
+  if (target) target.value = translated;
+}
+
+async function translateFlashFront(id) {
+  const text = document.getElementById(`back_${id}`)?.value?.trim();
+  const btn = document.getElementById(`translateFlashFrontBtn_${id}`);
+  const translated = await _callDeepL(text, btn);
+  if (!translated) return;
+  const target = document.getElementById(`front_${id}`);
+  if (target) target.value = translated;
+}
+
+async function translateLessonExample(id) {
+  const text = document.getElementById(`lessonExFr_${id}`)?.value?.trim();
+  const btn = document.getElementById(`translateExBtn_${id}`);
+  const translated = await _callDeepL(text, btn);
+  if (!translated) return;
+  const target = document.getElementById(`lessonExEn_${id}`);
+  if (target) target.value = translated;
+}
+
 function handleFeedbackAudioUpload(event, id) {
   const file = event.target.files[0];
   if (!file) return;
@@ -5642,6 +5940,22 @@ function openElevenLabsForMainAudio(id) {
     if (!audiosData[audioKey]) audiosData[audioKey] = {};
     audiosData[audioKey].main = blob;
 
+    // Auto-fill transcription from the dialogue text(s) typed in the modal
+    const voiceToSpeaker = {};
+    let speakerCount = 0;
+    const lines = [...document.querySelectorAll('#elevenLabsModal .dialogue-line')]
+      .map(line => {
+        const text = line.querySelector('.dialogue-text')?.value?.trim();
+        if (!text) return null;
+        const voiceId = line.querySelector('.dialogue-voice')?.value || '';
+        if (!(voiceId in voiceToSpeaker)) voiceToSpeaker[voiceId] = ++speakerCount;
+        return `Locuteur ${voiceToSpeaker[voiceId]} : ${text}`;
+      }).filter(Boolean).join('\n');
+    if (lines) {
+      const transcEl = document.getElementById(`audioTranscription_${id}`);
+      if (transcEl) transcEl.value = lines;
+    }
+
     console.log(`✅ Audio stored for ${audioKey}, now looking for input...`);
 
     // ✅ FIX 1: Correct syntax and ID
@@ -5713,7 +6027,7 @@ let _recorderChunks = [];
 let _recorderOnConfirm = null;
 let _recorderInterval = null;
 
-function openRecorderModal(onConfirm) {
+function openRecorderModal(onConfirm, referenceText) {
   _recorderOnConfirm = onConfirm;
   const existing = document.getElementById('audioRecorderModal');
   if (existing) existing.remove();
@@ -5724,12 +6038,19 @@ function openRecorderModal(onConfirm) {
     background:rgba(0,0,0,0.85); align-items:center; justify-content:center;
     z-index:2000; backdrop-filter:blur(4px);
   `;
+  const refBlock = referenceText
+    ? `<div style="background:#f0f4ff;border-left:4px solid #0d6efd;border-radius:6px;padding:12px 14px;margin-bottom:16px;font-size:15px;color:#1a1a2e;line-height:1.5;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6c757d;margin-bottom:4px;">Texte à lire</div>
+        <strong>${referenceText.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</strong>
+       </div>`
+    : '';
   modal.innerHTML = `
-    <div style="background:white;border-radius:16px;padding:28px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="background:white;border-radius:16px;padding:28px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
         <h5 style="margin:0;">🎤 Enregistrement <span style="font-size:12px;color:#888;font-weight:normal;"></span></h5>
         <button onclick="closeRecorderModal()" class="btn btn-sm btn-outline-secondary">✕</button>
       </div>
+      ${refBlock}
       <div id="recorderStatus" style="text-align:center;padding:12px 0;color:#666;font-size:14px;">
         Cliquez sur "Démarrer" pour commencer.
       </div>
@@ -7376,3 +7697,1377 @@ document.addEventListener('DOMContentLoaded', () => {
   checkSessionStatus();
   console.log('✅ Application initialized');
 });
+
+// ============================================================
+// 🃏  GÉNÉRATEUR DE JEU DE CARTES
+// ============================================================
+
+// ── Fixed-count mode ─────────────────────────────────────────
+// Set to a number to lock all sections to that exact count (hides add/remove UI).
+// Set to null to allow free-form add/remove.
+const CARTES_FIXED_COUNT = 10;
+
+let cartesCourtesIdCounter = 0;
+let cartesLonguesIdCounter = 0;
+let cartesRevisionIdCounter = 0;
+
+// Audio blobs
+const cartesAudioBlobs = {
+  expressions:  {},  // courtesStableId → blob  (Courtes face arrière)
+  longuesFront: {},  // longuesStableId  → blob  (Longues face avant)
+  longuesDef:   {}   // longuesStableId  → blob  (Longues face arrière)
+};
+
+// Currently shown card per section (stable ID or null)
+const currentCarteCardId = { courtes: null, longues: null, revision: null };
+let _carteDragSrc = null; // { section, stableId }
+
+// Selected visual theme for flashcard export (V3–V6)
+let carteTheme = 'V6';
+
+function setCarteTheme(version) {
+  carteTheme = version;
+  // Update theme picker cards
+  ['V3','V4','V5','V6'].forEach(v => {
+    const card = document.getElementById(`themeCard_${v}`);
+    if (card) card.classList.toggle('active', v === version);
+  });
+  // Update sidebar label
+  const label = document.getElementById('cartesThemeLabel');
+  if (label) label.textContent = version;
+}
+
+// ── Show one card at a time ────────────────────────────────────
+function showCarteCard(section, stableId) {
+  const listIdMap    = { courtes: 'carteCourtesList',  longues: 'carteLonguesList',  revision: 'carteRevisionList' };
+  const prefixMap    = { courtes: 'carteCourte_',      longues: 'carteLongue_',      revision: 'carteRevision_'    };
+  const welcomeIdMap = { courtes: 'cartesWelcome_courtes', longues: 'cartesWelcome_longues', revision: 'cartesWelcome_revision' };
+
+  const welcome = document.getElementById(welcomeIdMap[section]);
+  const list    = document.getElementById(listIdMap[section]);
+
+  if (!stableId) {
+    // Show welcome, hide all cards
+    if (welcome) welcome.style.display = 'block';
+    if (list) [...list.children].forEach(c => c.style.display = 'none');
+    currentCarteCardId[section] = null;
+  } else {
+    if (welcome) welcome.style.display = 'none';
+    if (list) [...list.children].forEach(c => c.style.display = 'none');
+    const card = document.getElementById(prefixMap[section] + stableId);
+    if (card) card.style.display = 'block';
+    currentCarteCardId[section] = stableId;
+  }
+  // Update active state in nav list
+  const navList = document.getElementById(`cartesNavList_${section}`);
+  if (navList) {
+    [...navList.querySelectorAll('li')].forEach(li => {
+      li.classList.toggle('active', parseInt(li.dataset.stableId) === stableId);
+    });
+  }
+}
+
+// ── Live nav label update on input ────────────────────────────
+function updateCarteNavLabel(section, stableId) {
+  const cfgMap = {
+    courtes: { listId: 'carteCourtesList', prefix: 'carteCourte_', label: 'Carte',    textFn: (id) => document.getElementById(`carteCourteFront_${id}`)?.value?.trim() || '' },
+    longues: { listId: 'carteLonguesList', prefix: 'carteLongue_', label: 'Carte',    textFn: (id) => document.getElementById(`carteLongueFrontText_${id}`)?.value?.trim() || '' }
+  };
+  const cfg = cfgMap[section];
+  if (!cfg) return;
+  const navList = document.getElementById(`cartesNavList_${section}`);
+  if (!navList) return;
+  const li = navList.querySelector(`[data-stable-id="${stableId}"]`);
+  if (!li) return;
+  const cards = [...document.querySelectorAll(`#${cfg.listId} [id^="${cfg.prefix}"]`)];
+  const idx = cards.findIndex(c => parseInt(c.id.replace(cfg.prefix, '')) === stableId);
+  if (idx === -1) return;
+  const snippet = cfg.textFn(stableId);
+  const label = snippet ? snippet.substring(0, 25) + (snippet.length > 25 ? '\u2026' : '') : '';
+  const span = li.querySelector('span.flex-grow-1');
+  if (span) {
+    span.innerHTML =
+      `<strong>${cfg.label} ${idx + 1}</strong>` +
+      (label ? ` <span class="exercise-type">&ndash; ${label}</span>` : '');
+  }
+}
+
+// ── Native drag-and-drop for cartes nav ───────────────────────
+function _carteDragStart(e) {
+  _carteDragSrc = {
+    section: this.dataset.section,
+    stableId: parseInt(this.dataset.stableId)
+  };
+  e.dataTransfer.effectAllowed = 'move';
+  this.style.opacity = '0.4';
+}
+
+function _carteDragEnd() {
+  _carteDragSrc = null;
+  this.style.opacity = '';
+  document.querySelectorAll('.carte-drop-zone.active').forEach(z => z.classList.remove('active'));
+}
+
+function _createCarteDropZone(section, insertIndex) {
+  const dz = document.createElement('li');
+  dz.className = 'carte-drop-zone';
+  dz.dataset.section = section;
+  dz.dataset.insertIndex = insertIndex;
+  dz.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    if (_carteDragSrc && _carteDragSrc.section === section) this.classList.add('active');
+  });
+  dz.addEventListener('dragleave', function() { this.classList.remove('active'); });
+  dz.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('active');
+    if (!_carteDragSrc || _carteDragSrc.section !== section) return;
+    _carteDropReorder(section, _carteDragSrc.stableId, parseInt(this.dataset.insertIndex));
+  });
+  return dz;
+}
+
+function _carteDropReorder(section, stableId, insertIndex) {
+  const cfgMap = {
+    courtes:  { listId: 'carteCourtesList',  prefix: 'carteCourte_',   numberFn: updateCarteCourteNumbers  },
+    longues:  { listId: 'carteLonguesList',  prefix: 'carteLongue_',   numberFn: updateCarteLongueNumbers  },
+    revision: { listId: 'carteRevisionList', prefix: 'carteRevision_', numberFn: updateCarteRevisionNumbers }
+  };
+  const cfg = cfgMap[section];
+  if (!cfg) return;
+  const contentList = document.getElementById(cfg.listId);
+  if (!contentList) return;
+  const cards = Array.from(contentList.children);
+  const dragIdx = cards.findIndex(c => parseInt(c.id.replace(cfg.prefix, '')) === stableId);
+  if (dragIdx === -1 || dragIdx === insertIndex || dragIdx + 1 === insertIndex) return;
+  const moved = cards[dragIdx];
+  contentList.removeChild(moved);
+  const adjustedIdx = dragIdx < insertIndex ? insertIndex - 1 : insertIndex;
+  const remaining = Array.from(contentList.children);
+  contentList.insertBefore(moved, remaining[adjustedIdx] || null);
+  cfg.numberFn();
+  if (section === 'courtes') refreshCartesSelects();
+  rebuildCartesNavList(section);
+  showCarteCard(section, currentCarteCardId[section]);
+}
+
+// ── Tabs ──────────────────────────────────────────────────────
+function showCartesTab(tab) {
+  ['courtes', 'longues', 'revision', 'theme', 'generate'].forEach(t => {
+    const el = document.getElementById(`cartesTab_${t}`);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+    const btn = document.getElementById(`cartesSideBtn_${t}`);
+    if (btn) btn.classList.toggle('active', t === tab);
+  });
+}
+
+// ── AI Generation ─────────────────────────────────────────────
+let _aiGenExpressions = [];
+
+function _aiSpinner(id, show) {
+  const el = document.getElementById(id);
+  if (el) el.style.setProperty('display', show ? 'inline-block' : 'none', 'important');
+}
+
+async function aiGenerateExpressions() {
+  const theme = document.getElementById('aiGenTheme')?.value?.trim();
+  if (!theme) { alert('Veuillez saisir un thème.'); return; }
+  const niveau = document.getElementById('aiGenNiveau')?.value || '3';
+  const contraintes = document.getElementById('aiGenContraintes')?.value?.trim() || '';
+
+  _aiSpinner('aiGenStep1Spinner', true);
+  const btn1 = document.querySelector('#aiGenStep1 .btn-primary');
+  if (btn1) btn1.disabled = true;
+
+  try {
+    const res = await fetch(`${SERVER_URL}/api/anthropic/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+      body: JSON.stringify({ step: 'expressions', niveau: parseInt(niveau), theme, contraintes })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+    _aiRenderExpressionsTable(data.expressions);
+    document.getElementById('aiGenStep1').style.display = 'none';
+    document.getElementById('aiGenStep2').style.display = 'block';
+    document.getElementById('aiGenStep3').style.display = 'none';
+  } catch (e) {
+    alert(`Erreur : ${e.message}`);
+  } finally {
+    _aiSpinner('aiGenStep1Spinner', false);
+    if (btn1) btn1.disabled = false;
+  }
+}
+
+function _aiRenderExpressionsTable(expressions) {
+  const container = document.getElementById('aiGenExpressionsTable');
+  let html = `<div class="table-responsive"><table class="table table-bordered table-sm align-middle" style="font-size:14px;">
+    <thead class="table-light"><tr>
+      <th style="width:2.5rem;">#</th>
+      <th>🇫🇷 Français <span class="fw-normal text-muted">(face arrière Courte)</span></th>
+      <th>🇬🇧 Anglais <span class="fw-normal text-muted">(face avant Courte)</span></th>
+    </tr></thead><tbody>`;
+  expressions.forEach((e, i) => {
+    html += `<tr>
+      <td class="text-center text-muted fw-bold">${i + 1}</td>
+      <td><input type="text" class="form-control form-control-sm border-0 bg-transparent ai-expr-fr" data-idx="${i}" value="${e.fr.replace(/"/g, '&quot;')}"></td>
+      <td><input type="text" class="form-control form-control-sm border-0 bg-transparent ai-expr-en" data-idx="${i}" value="${e.en.replace(/"/g, '&quot;')}"></td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
+function _aiCollectExpressions() {
+  return [...document.querySelectorAll('#aiGenExpressionsTable tbody tr')].map(row => ({
+    fr: row.querySelector('.ai-expr-fr')?.value?.trim() || '',
+    en: row.querySelector('.ai-expr-en')?.value?.trim() || ''
+  }));
+}
+
+function aiBackToStep1() {
+  document.getElementById('aiGenStep1').style.display = 'block';
+  document.getElementById('aiGenStep2').style.display = 'none';
+  document.getElementById('aiGenStep3').style.display = 'none';
+}
+
+function aiBackToStep2() {
+  document.getElementById('aiGenStep2').style.display = 'block';
+  document.getElementById('aiGenStep3').style.display = 'none';
+}
+
+async function aiGenerateSentences() {
+  _aiGenExpressions = _aiCollectExpressions();
+  if (_aiGenExpressions.some(e => !e.fr || !e.en)) {
+    alert('Veuillez remplir toutes les expressions avant de continuer.');
+    return;
+  }
+  const theme = document.getElementById('aiGenTheme')?.value?.trim() || '';
+  const niveau = document.getElementById('aiGenNiveau')?.value || '3';
+  const contraintes = document.getElementById('aiGenContraintes')?.value?.trim() || '';
+
+  _aiSpinner('aiGenStep2Spinner', true);
+  const btn2 = document.querySelector('#aiGenStep2 .btn-success');
+  if (btn2) btn2.disabled = true;
+
+  try {
+    const res = await fetch(`${SERVER_URL}/api/anthropic/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+      body: JSON.stringify({ step: 'sentences', niveau: parseInt(niveau), theme, contraintes, expressions: _aiGenExpressions })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+    _aiRenderSentencesTable(_aiGenExpressions, data.sentences);
+    document.getElementById('aiGenStep2').style.display = 'none';
+    document.getElementById('aiGenStep3').style.display = 'block';
+  } catch (e) {
+    alert(`Erreur : ${e.message}`);
+  } finally {
+    _aiSpinner('aiGenStep2Spinner', false);
+    if (btn2) btn2.disabled = false;
+  }
+}
+
+function _aiRenderSentencesTable(expressions, sentences) {
+  const container = document.getElementById('aiGenSentencesTable');
+  let html = '';
+  expressions.forEach((e, i) => {
+    const s = sentences[i] || { instruction: '', sentence: '' };
+    html += `<div class="card mb-2 border-0" style="background:#f8f9fa;border-radius:8px;">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex gap-3 align-items-start">
+          <span class="badge bg-primary mt-1" style="min-width:1.6rem;text-align:center;">${i + 1}</span>
+          <div class="flex-grow-1">
+            <div class="small text-muted mb-1"><strong>${e.fr}</strong> &nbsp;·&nbsp; <em>${e.en}</em></div>
+            <input type="text" class="form-control form-control-sm mb-1 ai-sent-instruction" data-idx="${i}"
+              placeholder="Instruction (face avant Longue)" value="${(s.instruction || '').replace(/"/g, '&quot;')}">
+            <textarea class="form-control form-control-sm ai-sent-sentence" data-idx="${i}" rows="2"
+              placeholder="Phrase en contexte (face arrière Longue)">${s.sentence || ''}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function aiPopulateCards() {
+  const sentences = [...document.querySelectorAll('#aiGenSentencesTable .ai-sent-sentence')].map((el, i) => ({
+    instruction: document.querySelector(`.ai-sent-instruction[data-idx="${i}"]`)?.value?.trim() || '',
+    sentence: el.value.trim()
+  }));
+
+  if (!confirm('Cela va remplacer TOUT le contenu actuel des flashcards. Continuer ?')) return;
+
+  // Clear existing cards and audio
+  ['courtes', 'longues', 'revision'].forEach(section => {
+    const ids = { courtes: 'carteCourtesList', longues: 'carteLonguesList', revision: 'carteRevisionList' };
+    const list = document.getElementById(ids[section]);
+    if (list) list.innerHTML = '';
+    currentCarteCardId[section] = null;
+    showCarteCard(section, null);
+  });
+  cartesCourtesIdCounter = 0;
+  cartesLonguesIdCounter = 0;
+  cartesRevisionIdCounter = 0;
+  Object.keys(cartesAudioBlobs.expressions).forEach(k => delete cartesAudioBlobs.expressions[k]);
+  Object.keys(cartesAudioBlobs.longuesFront).forEach(k => delete cartesAudioBlobs.longuesFront[k]);
+  Object.keys(cartesAudioBlobs.longuesDef).forEach(k => delete cartesAudioBlobs.longuesDef[k]);
+
+  // Set deck title + level from generation params
+  const theme = document.getElementById('aiGenTheme')?.value?.trim() || '';
+  const niveau = document.getElementById('aiGenNiveau')?.value || '3';
+  const titleEl = document.getElementById('cartesDeckTitle');
+  if (titleEl && !titleEl.value.trim()) titleEl.value = theme;
+  const levelEl = document.getElementById('cartesDeckLevel');
+  if (levelEl) levelEl.value = niveau;
+
+  // Populate Courtes
+  _aiGenExpressions.forEach(expr => {
+    addCarteCourte();
+    const id = cartesCourtesIdCounter;
+    const frontEl = document.getElementById(`carteCourteFront_${id}`);
+    const backEl  = document.getElementById(`carteCourteBack_${id}`);
+    if (frontEl) frontEl.value = expr.en;
+    if (backEl)  backEl.value  = expr.fr;
+    updateCarteNavLabel('courtes', id);
+  });
+
+  // Populate Longues, link each to the matching Courte
+  const courteCards = [...document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]')];
+  sentences.forEach((s, i) => {
+    addCarteLongue();
+    const id = cartesLonguesIdCounter;
+    const instrEl = document.getElementById(`carteLongueFrontText_${id}`);
+    const sentEl  = document.getElementById(`carteLongueBack_${id}`);
+    const refEl   = document.getElementById(`carteLongueFrontRef_${id}`);
+    if (instrEl) instrEl.value = s.instruction;
+    if (sentEl)  sentEl.value  = s.sentence;
+    if (refEl && courteCards[i]) {
+      refEl.value = parseInt(courteCards[i].id.replace('carteCourte_', ''));
+      if (typeof updateCarteLongueFront === 'function') updateCarteLongueFront(id);
+    }
+    updateCarteNavLabel('longues', id);
+  });
+
+  // Populate Révision: each matching pairs the Courte expression with its Longue sentence
+  courteCards.slice(0, 10).forEach((card, i) => {
+    addCarteRevision();
+    const id = cartesRevisionIdCounter;
+    const courteStableId = parseInt(card.id.replace('carteCourte_', ''));
+    const p1El = document.getElementById(`carteRevisionPaire1_${id}`);
+    const p2El = document.getElementById(`carteRevisionPaire2_${id}`);
+    if (p1El) p1El.value = courteStableId;
+    if (p2El) p2El.value = courteStableId;
+    if (typeof updateCarteRevisionInfo === 'function') updateCarteRevisionInfo(id);
+  });
+
+  ['courtes', 'longues', 'revision'].forEach(s => rebuildCartesNavList(s));
+
+  showCartesTab('courtes');
+  const first = document.querySelector('#carteCourtesList [id^="carteCourte_"]');
+  if (first) showCarteCard('courtes', parseInt(first.id.replace('carteCourte_', '')));
+}
+
+// ── Extra UI helpers ──────────────────────────────────────────
+function createCarteExtraUI(prefix) {
+  return `
+    <select id="carteExtraType_${prefix}" class="form-select form-select-sm mb-1" onchange="updateCarteExtraFields('${prefix}')">
+      <option value="Aucune">Aucune</option>
+      <option value="Phrases">Phrases</option>
+      <option value="Expressions">Expressions</option>
+    </select>
+    <div id="carteExtraFields_${prefix}"></div>`;
+}
+
+function updateCarteExtraFields(prefix) {
+  const type = document.getElementById(`carteExtraType_${prefix}`)?.value;
+  const container = document.getElementById(`carteExtraFields_${prefix}`);
+  if (!container) return;
+  if (type === 'Phrases') {
+    container.innerHTML = [1,2,3,4,5].map(i =>
+      `<input type="text" id="carteExtraPhrase_${prefix}_${i}" class="form-control form-control-sm mb-1" placeholder="Phrase ${i}">`
+    ).join('');
+  } else if (type === 'Expressions') {
+    container.innerHTML = [1,2,3,4,5].map(i => `
+      <div class="row g-1 mb-1">
+        <div class="col"><input type="text" id="carteExtraExpr_${prefix}_${i}" class="form-control form-control-sm" placeholder="Expression ${i}"></div>
+        <div class="col"><input type="text" id="carteExtraExemple_${prefix}_${i}" class="form-control form-control-sm" placeholder="Exemple ${i}"></div>
+      </div>`).join('');
+  } else {
+    container.innerHTML = '';
+  }
+}
+
+function buildCarteExtraData(prefix) {
+  const type = document.getElementById(`carteExtraType_${prefix}`)?.value || 'Aucune';
+  if (type === 'Phrases') {
+    const elements = [1,2,3,4,5]
+      .map(i => document.getElementById(`carteExtraPhrase_${prefix}_${i}`)?.value?.trim())
+      .filter(Boolean);
+    return { Type: 'Phrases', Elements: elements };
+  }
+  if (type === 'Expressions') {
+    const elements = [1,2,3,4,5].map(i => ({
+      Expression: document.getElementById(`carteExtraExpr_${prefix}_${i}`)?.value?.trim() || '',
+      Exemple: document.getElementById(`carteExtraExemple_${prefix}_${i}`)?.value?.trim() || ''
+    })).filter(e => e.Expression);
+    return { Type: 'Expressions', Elements: elements };
+  }
+  return { Type: 'Aucune' };
+}
+
+// ── Audio helpers ─────────────────────────────────────────────
+function createCarteAudioButtons(audioType, stableId) {
+  const inputId = `carteAudioInput_${audioType}_${stableId}`;
+  return `
+    <div class="d-flex gap-2 flex-wrap">
+      <input type="file" accept="audio/*" id="${inputId}" style="display:none"
+        onchange="handleCarteAudio(event,'${audioType}',${stableId})">
+      <button class="btn btn-sm btn-outline-secondary" type="button"
+        onclick="document.getElementById('${inputId}').click()">&#128193; Browse</button>
+      <button class="btn btn-sm btn-outline-primary" type="button"
+        onclick="openElevenLabsForCarte('${audioType}',${stableId})">&#127897;&#65039; G&#233;n&#233;rer</button>
+      <button class="btn btn-sm btn-outline-danger" type="button"
+        onclick="openRecorderForCarte('${audioType}',${stableId})" title="Exp&#233;rimental">&#9210; Enregistrer</button>
+    </div>`;
+}
+
+function handleCarteAudio(event, audioType, stableId) {
+  const file = event.target.files[0];
+  if (!file) return;
+  cartesAudioBlobs[audioType][stableId] = file;
+  refreshCarteAudioPreview(audioType, stableId);
+  if (audioType === 'expressions') refreshCarteLonguesFrontAudioInfo();
+}
+
+function openElevenLabsForCarte(audioType, stableId) {
+  openElevenLabsModal(`CARTE_${audioType}_${stableId}`, (blob) => {
+    cartesAudioBlobs[audioType][stableId] = blob;
+    refreshCarteAudioPreview(audioType, stableId);
+  });
+}
+
+function openRecorderForCarte(audioType, stableId) {
+  const textMap = {
+    expressions:  () => document.getElementById(`carteCourteBack_${stableId}`)?.value?.trim(),
+    longuesFront: () => document.getElementById(`carteLongueFrontText_${stableId}`)?.value?.trim(),
+    longuesDef:   () => document.getElementById(`carteLongueBack_${stableId}`)?.value?.trim()
+  };
+  const refText = textMap[audioType]?.() || '';
+  openRecorderModal((blob) => {
+    cartesAudioBlobs[audioType][stableId] = blob;
+    refreshCarteAudioPreview(audioType, stableId);
+  }, refText);
+}
+
+function refreshCarteAudioPreview(audioType, stableId) {
+  const containerIdMap = {
+    expressions:  `carteExprPreview_${stableId}`,
+    longuesFront: `carteLongueFrontPreview_${stableId}`,
+    longuesDef:   `carteLongueDefPreview_${stableId}`
+  };
+  const containerId = containerIdMap[audioType];
+  if (containerId) {
+    const container = document.getElementById(containerId);
+    if (container) renderCarteAudioPreview(container, audioType, stableId);
+  }
+}
+
+function renderCarteAudioPreview(container, audioType, stableId) {
+  const blob = cartesAudioBlobs[audioType][stableId];
+  if (!blob) { container.innerHTML = ''; return; }
+  const url = URL.createObjectURL(blob);
+  container.innerHTML = `
+    <div class="d-flex align-items-center gap-2 mt-1">
+      <audio controls src="${url}" style="height:32px; flex:1;"></audio>
+      <button type="button" class="btn btn-sm btn-outline-danger"
+        onclick="deleteCarteAudio('${audioType}',${stableId})">&#10060;</button>
+    </div>`;
+}
+
+function deleteCarteAudio(audioType, stableId) {
+  delete cartesAudioBlobs[audioType][stableId];
+  refreshCarteAudioPreview(audioType, stableId);
+}
+
+// ── Flashcards Courtes ────────────────────────────────────────
+function addCarteCourte() {
+  if (CARTES_FIXED_COUNT !== null &&
+      document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]').length >= CARTES_FIXED_COUNT) return;
+  cartesCourtesIdCounter++;
+  const id = cartesCourtesIdCounter;
+  const list = document.getElementById('carteCourtesList');
+  const div = document.createElement('div');
+  div.id = `carteCourte_${id}`;
+  div.className = 'card mb-3';
+  div.innerHTML = `
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <strong class="carte-number">Carte ?</strong>
+      ${CARTES_FIXED_COUNT === null ? `<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCarteCourte(${id})">&#10060;</button>` : ''}
+    </div>
+    <div class="card-body">
+      <div class="mb-2">
+        <label class="form-label small fw-bold">Consigne</label>
+        <input type="text" id="carteCourteConsigne_${id}" class="form-control form-control-sm" value="Traduisez en fran&#231;ais">
+      </div>
+      <div class="row g-2 mb-2">
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Face avant <span class="fw-normal text-muted">(anglais)</span></label>
+          <textarea id="carteCourteFront_${id}" class="form-control form-control-sm" rows="2" placeholder="English expression..."
+            oninput="updateCarteNavLabel('courtes',${id})"></textarea>
+          <button type="button" class="btn btn-sm btn-outline-info mt-1 py-0 px-2" style="font-size:0.75rem;"
+            onclick="translateCarteCourte(${id})">&#127760; Traduire depuis la face arri&#232;re</button>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Face arri&#232;re <span class="fw-normal text-muted">(fran&#231;ais)</span></label>
+          <textarea id="carteCourteBack_${id}" class="form-control form-control-sm" rows="2"
+            placeholder="Expression fran&#231;aise..."></textarea>
+        </div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-bold">Audio face arri&#232;re <span class="fw-normal text-muted">(expression fran&#231;aise)</span></label>
+        ${createCarteAudioButtons('expressions', id)}
+        <div id="carteExprPreview_${id}"></div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-bold">Extra</label>
+        ${createCarteExtraUI(`C${id}`)}
+      </div>
+    </div>`;
+  div.style.display = 'none';
+  list.appendChild(div);
+  updateCarteCourteNumbers();
+  refreshCartesSelects();
+  rebuildCartesNavList('courtes');
+  autoExpandCartesSection('courtes');
+  showCarteCard('courtes', id);
+}
+
+function removeCarteCourte(id) {
+  if (CARTES_FIXED_COUNT !== null) return;
+  const list = document.getElementById('carteCourtesList');
+  const card = document.getElementById(`carteCourte_${id}`);
+  let nextId = null;
+  if (list && card) {
+    const sibling = card.nextElementSibling || card.previousElementSibling;
+    if (sibling) nextId = parseInt(sibling.id.replace('carteCourte_', ''));
+  }
+  card?.remove();
+  document.querySelectorAll('[id^="carteLongueFrontRef_"]').forEach(select => {
+    if (parseInt(select.value) === id) {
+      select.value = '';
+      updateCarteLongueFront(select.id.replace('carteLongueFrontRef_', ''));
+    }
+  });
+  updateCarteCourteNumbers();
+  refreshCartesSelects();
+  rebuildCartesNavList('courtes');
+  showCarteCard('courtes', nextId);
+}
+
+function updateCarteCourteNumbers() {
+  document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]').forEach((card, idx) => {
+    const num = card.querySelector('.carte-number');
+    if (num) num.textContent = `Carte ${idx + 1}`;
+  });
+}
+
+async function translateCarteCourte(id) {
+  const backEl  = document.getElementById(`carteCourteBack_${id}`);
+  const frontEl = document.getElementById(`carteCourteFront_${id}`);
+  if (!backEl || !frontEl) return;
+  const text = backEl.value.trim();
+  if (!text) { alert('La face arrière est vide — rien à traduire.'); return; }
+  const btn = document.querySelector(`#carteCourte_${id} button[onclick="translateCarteCourte(${id})"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    const res = await fetch(`${SERVER_URL}/api/deepl/translate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${sessionToken}`
+      },
+      body: JSON.stringify({ text, target_lang: 'EN' })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Erreur ${res.status}`);
+    }
+    const data = await res.json();
+    const translated = data?.translations?.[0]?.text;
+    if (!translated) throw new Error('Réponse inattendue de DeepL.');
+    frontEl.value = translated;
+    frontEl.dispatchEvent(new Event('input'));
+  } catch (e) {
+    alert(`Traduction échouée : ${e.message}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#127760; Traduire'; }
+  }
+}
+
+// ── Flashcards Longues ────────────────────────────────────────
+function addCarteLongue() {
+  if (CARTES_FIXED_COUNT !== null &&
+      document.querySelectorAll('#carteLonguesList [id^="carteLongue_"]').length >= CARTES_FIXED_COUNT) return;
+  cartesLonguesIdCounter++;
+  const id = cartesLonguesIdCounter;
+  const list = document.getElementById('carteLonguesList');
+  const div = document.createElement('div');
+  div.id = `carteLongue_${id}`;
+  div.className = 'card mb-3';
+  div.innerHTML = `
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <strong class="carte-number">Carte ?</strong>
+      ${CARTES_FIXED_COUNT === null ? `<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCarteLongue(${id})">&#10060;</button>` : ''}
+    </div>
+    <div class="card-body">
+      <div class="mb-2">
+        <label class="form-label small fw-bold">Consigne</label>
+        <input type="text" id="carteLongueConsigne_${id}" class="form-control form-control-sm" value="Mettez l'expression dans une phrase">
+      </div>
+      <div class="mb-3 p-2 border rounded bg-light">
+        <label class="form-label small fw-bold">Lien Révision <span class="fw-normal text-muted">(association pour le matching)</span></label>
+        <select id="carteLongueFrontRef_${id}" class="form-select form-select-sm mb-1"
+          onchange="updateCarteLongueFront(${id})">
+          <option value="">&#8212; Associer &#224; une carte Courte &#8212;</option>
+        </select>
+        <div id="carteLongueFrontAudioInfo_${id}" class="small text-muted"></div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-bold">Face avant <span class="fw-normal text-muted">(texte)</span></label>
+        <input type="text" id="carteLongueFrontText_${id}" class="form-control form-control-sm mb-1"
+          placeholder="Texte de la face avant (pr&#233;-rempli depuis Courtes, modifiable)"
+          oninput="updateCarteNavLabel('longues',${id})">
+        <label class="form-label small fw-bold mt-1">Audio face avant</label>
+        ${createCarteAudioButtons('longuesFront', id)}
+        <div id="carteLongueFrontPreview_${id}"></div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-bold">Face arri&#232;re <span class="fw-normal text-muted">(phrase)</span></label>
+        <textarea id="carteLongueBack_${id}" class="form-control form-control-sm" rows="2"
+          placeholder="La phrase compl&#232;te avec l'expression..."
+          oninput="updateCarteNavLabel('longues',${id})"></textarea>
+        <label class="form-label small fw-bold mt-1">Audio face arri&#232;re</label>
+        ${createCarteAudioButtons('longuesDef', id)}
+        <div id="carteLongueDefPreview_${id}"></div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-bold">Extra</label>
+        ${createCarteExtraUI(`L${id}`)}
+      </div>
+    </div>`;
+  div.style.display = 'none';
+  list.appendChild(div);
+  updateCarteLongueNumbers();
+  refreshCarteLongueSelects(id);
+  rebuildCartesNavList('longues');
+  autoExpandCartesSection('longues');
+  showCarteCard('longues', id);
+}
+
+function removeCarteLongue(id) {
+  if (CARTES_FIXED_COUNT !== null) return;
+  const list = document.getElementById('carteLonguesList');
+  const card = document.getElementById(`carteLongue_${id}`);
+  let nextId = null;
+  if (list && card) {
+    const sibling = card.nextElementSibling || card.previousElementSibling;
+    if (sibling) nextId = parseInt(sibling.id.replace('carteLongue_', ''));
+  }
+  card?.remove();
+  updateCarteLongueNumbers();
+  rebuildCartesNavList('longues');
+  showCarteCard('longues', nextId);
+}
+
+function updateCarteLongueNumbers() {
+  document.querySelectorAll('#carteLonguesList [id^="carteLongue_"]').forEach((card, idx) => {
+    const num = card.querySelector('.carte-number');
+    if (num) num.textContent = `Carte ${idx + 1}`;
+  });
+}
+
+function updateCarteLongueFront(id) {
+  const select   = document.getElementById(`carteLongueFrontRef_${id}`);
+  const textInput = document.getElementById(`carteLongueFrontText_${id}`);
+  const info     = document.getElementById(`carteLongueFrontAudioInfo_${id}`);
+  const refId    = parseInt(select?.value);
+
+  if (!refId) {
+    if (info) info.innerHTML = '';
+    return;
+  }
+  // Pre-fill text only if the field is still empty
+  if (textInput && !textInput.value.trim()) {
+    textInput.value = document.getElementById(`carteCourteBack_${refId}`)?.value || '';
+  }
+  // Show link status
+  const courtes = [...document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]')];
+  const pos = courtes.findIndex(c => parseInt(c.id.replace('carteCourte_', '')) === refId);
+  if (info) info.innerHTML = pos >= 0
+    ? `<span class="text-success">&#10003; Li&#233;e &#224; Carte Courte ${pos + 1}</span>`
+    : '';
+}
+
+function refreshCarteLonguesFrontText(courtesId) {
+  const newText = document.getElementById(`carteCourteBack_${courtesId}`)?.value || '';
+  document.querySelectorAll('[id^="carteLongueFrontRef_"]').forEach(select => {
+    if (parseInt(select.value) === courtesId) {
+      const tid = select.id.replace('carteLongueFrontRef_', '');
+      const textInput = document.getElementById(`carteLongueFrontText_${tid}`);
+      if (textInput) textInput.value = newText;
+    }
+  });
+}
+
+function refreshCarteLonguesFrontAudioInfo() {
+  document.querySelectorAll('[id^="carteLongueFrontRef_"]').forEach(select => {
+    const refId = parseInt(select.value);
+    if (!refId) return;
+    const tid = select.id.replace('carteLongueFrontRef_', '');
+    const audioInfo = document.getElementById(`carteLongueFrontAudioInfo_${tid}`);
+    if (!audioInfo) return;
+    const hasExpr = !!cartesAudioBlobs.expressions[refId];
+    audioInfo.innerHTML = hasExpr
+      ? '&#128266; Audio li&#233; : <span class="text-success">&#10003; disponible (depuis Courtes)</span>'
+      : '&#128266; Audio li&#233; : <span class="text-warning">&#9888;&#65039; pas encore enregistr&#233; dans Courtes</span>';
+  });
+}
+
+// ── Révision ──────────────────────────────────────────────────
+function addCarteRevision() {
+  if (CARTES_FIXED_COUNT !== null &&
+      document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]').length >= CARTES_FIXED_COUNT) return;
+  cartesRevisionIdCounter++;
+  const id = cartesRevisionIdCounter;
+  const list = document.getElementById('carteRevisionList');
+  const div = document.createElement('div');
+  div.id = `carteRevision_${id}`;
+  div.className = 'card mb-3';
+  div.innerHTML = `
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <strong class="carte-number">Matching ?</strong>
+      ${CARTES_FIXED_COUNT === null ? `<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCarteRevision(${id})">&#10060;</button>` : ''}
+    </div>
+    <div class="card-body">
+      <div class="mb-2">
+        <label class="form-label small fw-bold">Consigne</label>
+        <input type="text" id="carteRevisionConsigne_${id}" class="form-control form-control-sm"
+          value="Associez chaque expression &#224; sa d&#233;finition">
+      </div>
+      <div class="row g-2">
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Paire 1</label>
+          <select id="carteRevisionPaire1_${id}" class="form-select form-select-sm mb-1"
+            onchange="updateCarteRevisionInfo(${id})">
+            <option value="">&#8212; Expression 1 &#8212;</option>
+          </select>
+          <div id="carteRevisionInfo1_${id}" class="small text-muted"></div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Paire 2</label>
+          <select id="carteRevisionPaire2_${id}" class="form-select form-select-sm mb-1"
+            onchange="updateCarteRevisionInfo(${id})">
+            <option value="">&#8212; Expression 2 &#8212;</option>
+          </select>
+          <div id="carteRevisionInfo2_${id}" class="small text-muted"></div>
+        </div>
+      </div>
+    </div>`;
+  div.style.display = 'none';
+  list.appendChild(div);
+  updateCarteRevisionNumbers();
+  refreshCarteRevisionSelects(id);
+  rebuildCartesNavList('revision');
+  autoExpandCartesSection('revision');
+  showCarteCard('revision', id);
+}
+
+function removeCarteRevision(id) {
+  if (CARTES_FIXED_COUNT !== null) return;
+  const list = document.getElementById('carteRevisionList');
+  const card = document.getElementById(`carteRevision_${id}`);
+  let nextId = null;
+  if (list && card) {
+    const sibling = card.nextElementSibling || card.previousElementSibling;
+    if (sibling) nextId = parseInt(sibling.id.replace('carteRevision_', ''));
+  }
+  card?.remove();
+  updateCarteRevisionNumbers();
+  rebuildCartesNavList('revision');
+  showCarteCard('revision', nextId);
+}
+
+function updateCarteRevisionNumbers() {
+  document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]').forEach((card, idx) => {
+    const num = card.querySelector('.carte-number');
+    if (num) num.textContent = `Matching ${idx + 1}`;
+  });
+}
+
+function updateCarteRevisionInfo(id) {
+  [1, 2].forEach(p => {
+    const select = document.getElementById(`carteRevisionPaire${p}_${id}`);
+    const info = document.getElementById(`carteRevisionInfo${p}_${id}`);
+    if (!select || !info) return;
+    const refId = parseInt(select.value);
+    if (!refId) { info.innerHTML = ''; return; }
+    const expr = document.getElementById(`carteCourteBack_${refId}`)?.value || '?';
+    const hasExpr = !!cartesAudioBlobs.expressions[refId];
+    const { lId: linkedLId } = _findLinkedLongue(refId);
+    const hasDef = linkedLId ? !!cartesAudioBlobs.longuesDef[linkedLId] : false;
+    info.innerHTML = `<em>${expr}</em> &mdash;
+      Expr: ${hasExpr ? '<span class="text-success">&#10003;</span>' : '<span class="text-danger">&#10007;</span>'}
+      D&#233;f: ${hasDef ? '<span class="text-success">&#10003;</span>' : '<span class="text-danger">&#10007;</span>'}`;
+  });
+  rebuildCartesNavList('revision');
+}
+
+// ── Select refresh ────────────────────────────────────────────
+function refreshCartesSelects() {
+  document.querySelectorAll('[id^="carteLongueFrontRef_"]').forEach(select => {
+    refreshCarteLongueSelects(select.id.replace('carteLongueFrontRef_', ''));
+  });
+  document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]').forEach(card => {
+    refreshCarteRevisionSelects(card.id.replace('carteRevision_', ''));
+  });
+}
+
+function getCarteCourteOptions(currentVal) {
+  const cards = document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]');
+  let opts = '<option value="">&#8212; S&#233;lectionner &#8212;</option>';
+  cards.forEach((card, idx) => {
+    const sId = parseInt(card.id.replace('carteCourte_', ''));
+    const backText = document.getElementById(`carteCourteBack_${sId}`)?.value?.trim() || '';
+    const label = `Carte ${idx + 1}${backText ? ' \u2013 ' + backText.substring(0, 28) : ''}`;
+    opts += `<option value="${sId}"${parseInt(currentVal) === sId ? ' selected' : ''}>${label}</option>`;
+  });
+  return opts;
+}
+
+function refreshCarteLongueSelects(id) {
+  const select = document.getElementById(`carteLongueFrontRef_${id}`);
+  if (!select) return;
+  select.innerHTML = getCarteCourteOptions(select.value);
+}
+
+function refreshCarteRevisionSelects(id) {
+  [1, 2].forEach(p => {
+    const select = document.getElementById(`carteRevisionPaire${p}_${id}`);
+    if (!select) return;
+    const cur = select.value;
+    const cards = document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]');
+    let opts = `<option value="">&#8212; Expression ${p} &#8212;</option>`;
+    cards.forEach((card, idx) => {
+      const sId = parseInt(card.id.replace('carteCourte_', ''));
+      const backText = document.getElementById(`carteCourteBack_${sId}`)?.value?.trim() || '';
+      const label = `Carte ${idx + 1}${backText ? ' \u2013 ' + backText.substring(0, 28) : ''}`;
+      opts += `<option value="${sId}"${parseInt(cur) === sId ? ' selected' : ''}>${label}</option>`;
+    });
+    select.innerHTML = opts;
+  });
+}
+
+// ── Build ZIP (shared between export and preview) ─────────────
+async function _buildCartesZip() {
+  const templatePath = 'Modele/Modele_Flashcards.zip';
+  const response = await fetch(templatePath);
+  if (!response.ok) throw new Error(`Impossible de charger ${templatePath} !`);
+  const arrayBuffer = await response.arrayBuffer();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+
+  const courteCards = [...document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]')];
+  const stableToPos = {};
+  courteCards.forEach((card, idx) => {
+    stableToPos[parseInt(card.id.replace('carteCourte_', ''))] = idx + 1;
+  });
+
+  // Metadata (Title, Level, Theme, card counts, durations)
+  const courteCount  = document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]').length;
+  const longueCount  = document.querySelectorAll('#carteLonguesList [id^="carteLongue_"]').length;
+  const revisionCount = document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]').length;
+  const metaJSON = {
+    Titre: document.getElementById('cartesDeckTitle')?.value?.trim() || '',
+    Niveau: document.getElementById('cartesDeckLevel')?.value || '1',
+    Theme: carteTheme,
+    FC_Courtes_Total: courteCount,
+    FC_Longues_Total: longueCount,
+    FC_Revision_Total: revisionCount,
+    Durations: {
+      Courtes:  parseInt(document.getElementById('cartesDurationCourtes')?.value)  || 5,
+      Longues:  parseInt(document.getElementById('cartesDurationLongues')?.value)  || 10,
+      Revision: parseInt(document.getElementById('cartesDurationRevision')?.value) || 5
+    }
+  };
+  zip.file('Ressources_FCs/S0/variables.json', JSON.stringify(metaJSON, null, 2));
+
+  // Courtes JSON
+  const courtesJSON = {};
+  courteCards.forEach((card, idx) => {
+    const sId = parseInt(card.id.replace('carteCourte_', ''));
+    const pos = idx + 1;
+    courtesJSON[`Card${pos}`] = {
+      Consigne: document.getElementById(`carteCourteConsigne_${sId}`)?.value || '',
+      Front_Text: document.getElementById(`carteCourteFront_${sId}`)?.value || '',
+      Back_Text: document.getElementById(`carteCourteBack_${sId}`)?.value || '',
+      Back_Audio: cartesAudioBlobs.expressions[sId] ? `Ressources_FCs/Audios/Expressions/FC_${pos}.mp3` : '',
+      Extra: buildCarteExtraData(`C${sId}`)
+    };
+    if (cartesAudioBlobs.expressions[sId])
+      zip.file(`Ressources_FCs/Audios/Expressions/FC_${pos}.mp3`, cartesAudioBlobs.expressions[sId]);
+  });
+  zip.file('Ressources_FCs/Flashcards_Courtes/variables.json', JSON.stringify(courtesJSON, null, 2));
+
+  // Longues JSON
+  const longueCards = [...document.querySelectorAll('#carteLonguesList [id^="carteLongue_"]')];
+  const longuesJSON = {};
+  longueCards.forEach((card, idx) => {
+    const lId = parseInt(card.id.replace('carteLongue_', ''));
+    const pos = idx + 1;
+    const refId = parseInt(document.getElementById(`carteLongueFrontRef_${lId}`)?.value) || 0;
+    const frontAudioPath = cartesAudioBlobs.longuesFront[lId] ? `Ressources_FCs/Audios/LonguesFront/FC_${pos}.mp3` : '';
+    const defAudioPath   = cartesAudioBlobs.longuesDef[lId]   ? `Ressources_FCs/Audios/LonguesDef/FC_${pos}.mp3`   : '';
+    longuesJSON[`Card${pos}`] = {
+      Consigne:   document.getElementById(`carteLongueConsigne_${lId}`)?.value || '',
+      Front_Text: document.getElementById(`carteLongueFrontText_${lId}`)?.value || '',
+      Front_Audio: frontAudioPath,
+      Back_Text:  document.getElementById(`carteLongueBack_${lId}`)?.value || '',
+      Back_Audio:  defAudioPath,
+      Courte_Ref: refId || '',
+      Extra: buildCarteExtraData(`L${lId}`)
+    };
+    if (cartesAudioBlobs.longuesFront[lId])
+      zip.file(`Ressources_FCs/Audios/LonguesFront/FC_${pos}.mp3`, cartesAudioBlobs.longuesFront[lId]);
+    if (cartesAudioBlobs.longuesDef[lId])
+      zip.file(`Ressources_FCs/Audios/LonguesDef/FC_${pos}.mp3`, cartesAudioBlobs.longuesDef[lId]);
+  });
+  zip.file('Ressources_FCs/Flashcards_Longues/variables.json', JSON.stringify(longuesJSON, null, 2));
+
+  // Révision JSON
+  const revisionCards = [...document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]')];
+  const revisionJSON = {};
+  revisionCards.forEach((card, idx) => {
+    const rId = parseInt(card.id.replace('carteRevision_', ''));
+    const pos = idx + 1;
+    const ref1 = parseInt(document.getElementById(`carteRevisionPaire1_${rId}`)?.value);
+    const ref2 = parseInt(document.getElementById(`carteRevisionPaire2_${rId}`)?.value);
+    const pos1 = stableToPos[ref1] || 0;
+    const pos2 = stableToPos[ref2] || 0;
+    const { pos: lPos1 } = _findLinkedLongue(ref1);
+    const { pos: lPos2 } = _findLinkedLongue(ref2);
+    revisionJSON[`Matching${pos}`] = {
+      Consigne: document.getElementById(`carteRevisionConsigne_${rId}`)?.value || '',
+      Paire_1: {
+        Audio_Definition: {
+          fichier: lPos1 ? `Ressources_FCs/Audios/LonguesDef/FC_${lPos1}.mp3` : '',
+          transcription: _findLongueBackText(ref1)
+        },
+        Audio_Expression: {
+          fichier: pos1 ? `Ressources_FCs/Audios/Expressions/FC_${pos1}.mp3` : '',
+          transcription: ref1 ? (document.getElementById(`carteCourteBack_${ref1}`)?.value || '') : ''
+        }
+      },
+      Paire_2: {
+        Audio_Definition: {
+          fichier: lPos2 ? `Ressources_FCs/Audios/LonguesDef/FC_${lPos2}.mp3` : '',
+          transcription: _findLongueBackText(ref2)
+        },
+        Audio_Expression: {
+          fichier: pos2 ? `Ressources_FCs/Audios/Expressions/FC_${pos2}.mp3` : '',
+          transcription: ref2 ? (document.getElementById(`carteCourteBack_${ref2}`)?.value || '') : ''
+        }
+      }
+    };
+  });
+  zip.file('Ressources_FCs/Flashcards_Revision/variables.json', JSON.stringify(revisionJSON, null, 2));
+
+  // Replace decorative images if a non-default theme is chosen
+  if (carteTheme !== 'V6') {
+    const themePath = `Modele/Images_Flashcards/${carteTheme}`;
+    const courteImgs = [
+      '5W58HS3AJ2E.jpg','5bkEbV55pos.jpg','5xBSyQMS7Ic.jpg','67PxTV5Wyu0.jpg',
+      '6JWEZOTKGDz.jpg','6Jtn6Gp9v28.jpg','6YJF9zix7qV.jpg','6nd6yWucSra.jpg',
+      '6oUVHWzbjDV.jpg','6qKHdzJvoip.jpg'
+    ];
+    const longueImgs = [
+      '5k3S7tf1xGz.jpg','5pFIufFFQCw.jpg','5wLYLITyPRS.jpg','5xWwdJe0lwW.jpg',
+      '5zgnc47DEJA.jpg','6CV1mLuHSdn.jpg','6LXazCjYi03.jpg','6cy2aWU9b9p.jpg',
+      '6g5yBoSmkqY.jpg','6qWyu3z3UaV.jpg'
+    ];
+    const replaceImages = async (subFolder, filenames) => {
+      for (const name of filenames) {
+        const r = await fetch(`${themePath}/${subFolder}/${name}`);
+        if (r.ok) {
+          const buf = await r.arrayBuffer();
+          zip.file(`mobile/${name}`, buf);
+        }
+      }
+    };
+    await replaceImages('Flashcards_Courtes', courteImgs);
+    await replaceImages('Flashcards_Longues', longueImgs);
+  }
+
+  return zip;
+}
+
+// ── Export ────────────────────────────────────────────────────
+async function exportCartes() {
+  try {
+    const zip = await _buildCartesZip();
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const title = document.getElementById('cartesDeckTitle')?.value?.trim();
+    const filename = title ? `${title}.zip` : 'Modele_Flashcards.zip';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+// ── Preview ───────────────────────────────────────────────────
+async function previewCartes() {
+  deleteCurrentPackage();
+  const modal = new bootstrap.Modal(document.getElementById('scormPlayerModal'));
+  modal.show();
+  const loadingDiv = document.getElementById('scormLoading');
+  const iframe = document.getElementById('scormPlayerFrame');
+  if (loadingDiv) loadingDiv.style.cssText = 'display: flex !important;';
+  if (iframe) iframe.style.display = 'none';
+  try {
+    updateLoadingStatus('Génération du package Flashcards...', 20);
+    const zipObject = await _buildCartesZip();
+    updateLoadingStatus('Préparation du fichier...', 40);
+    const zipBlob = await zipObject.generateAsync({ type: 'blob' });
+    updateLoadingStatus('Upload vers le serveur...', 60);
+    const response = await fetch(`${SERVER_URL}/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/zip' },
+      body: zipBlob
+    });
+    if (!response.ok) throw new Error(`Server error: ${response.status}`);
+    const result = await response.json();
+    if (!result.success) throw new Error(result.error || 'Upload failed');
+    currentPackageId = result.packageId;
+    updateLoadingStatus('Chargement du contenu...', 90);
+    iframe.onload = function() {
+      if (loadingDiv) loadingDiv.style.cssText = 'display: none !important;';
+      if (iframe) iframe.style.display = 'block';
+    };
+    setTimeout(() => {
+      if (loadingDiv) loadingDiv.style.cssText = 'display: none !important;';
+      if (iframe) iframe.style.display = 'block';
+    }, 2000);
+    iframe.src = result.launchUrl;
+  } catch (error) {
+    console.error('❌ Preview cartes error:', error);
+    if (loadingDiv) loadingDiv.style.cssText = 'display: none !important;';
+    deleteCurrentPackage();
+    let errorMsg = '❌ Erreur:\n\n' + error.message;
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      errorMsg += '\n\nLe serveur local ne semble pas démarré.';
+    }
+    alert(errorMsg);
+    modal.hide();
+  }
+}
+
+// Returns { lId, pos } of the Longue card linked to a given Courte stableId (or zeroes)
+function _findLinkedLongue(courtesStableId) {
+  if (!courtesStableId) return { lId: 0, pos: 0 };
+  const longueCards = [...document.querySelectorAll('#carteLonguesList [id^="carteLongue_"]')];
+  for (let i = 0; i < longueCards.length; i++) {
+    const lId = parseInt(longueCards[i].id.replace('carteLongue_', ''));
+    if (parseInt(document.getElementById(`carteLongueFrontRef_${lId}`)?.value) === courtesStableId)
+      return { lId, pos: i + 1 };
+  }
+  return { lId: 0, pos: 0 };
+}
+
+function _findLongueBackText(courtesStableId) {
+  if (!courtesStableId) return '';
+  let found = '';
+  document.querySelectorAll('[id^="carteLongueFrontRef_"]').forEach(select => {
+    if (parseInt(select.value) === courtesStableId)
+      found = document.getElementById(`carteLongueBack_${select.id.replace('carteLongueFrontRef_', '')}`)?.value || '';
+  });
+  return found;
+}
+
+// ── Import ────────────────────────────────────────────────────
+async function importCartes(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  showImportOverlay();
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+
+    // Helper: read JSON from zip
+    async function readJSON(path) {
+      const f = zip.file(path);
+      if (!f) return null;
+      return JSON.parse(await f.async('string'));
+    }
+
+    // Helper: read audio blob from zip
+    async function readAudio(path) {
+      const f = zip.file(path);
+      if (!f) return null;
+      return await f.async('blob');
+    }
+
+    // Clear existing cards
+    ['carteCourtesList', 'carteLonguesList', 'carteRevisionList'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
+    cartesCourtesIdCounter = 0;
+    cartesLonguesIdCounter = 0;
+    cartesRevisionIdCounter = 0;
+    cartesAudioBlobs.expressions  = {};
+    cartesAudioBlobs.longuesFront = {};
+    cartesAudioBlobs.longuesDef   = {};
+    currentCarteCardId.courtes = null;
+    currentCarteCardId.longues = null;
+    currentCarteCardId.revision = null;
+
+    // ── Restore Title, Level, Theme & Durations ──
+    const metaJSON = await readJSON('Ressources_FCs/S0/variables.json');
+    if (metaJSON) {
+      const titleEl = document.getElementById('cartesDeckTitle');
+      const levelEl = document.getElementById('cartesDeckLevel');
+      if (titleEl && metaJSON.Titre) titleEl.value = metaJSON.Titre;
+      if (levelEl && metaJSON.Niveau) levelEl.value = metaJSON.Niveau;
+      if (metaJSON.Theme) setCarteTheme(metaJSON.Theme);
+      if (metaJSON.Durations) {
+        const dC = document.getElementById('cartesDurationCourtes');
+        const dL = document.getElementById('cartesDurationLongues');
+        const dR = document.getElementById('cartesDurationRevision');
+        if (dC && metaJSON.Durations.Courtes)  dC.value = metaJSON.Durations.Courtes;
+        if (dL && metaJSON.Durations.Longues)  dL.value = metaJSON.Durations.Longues;
+        if (dR && metaJSON.Durations.Revision) dR.value = metaJSON.Durations.Revision;
+      }
+    }
+
+    // ── Import Courtes ──
+    const courtesJSON = await readJSON('Ressources_FCs/Flashcards_Courtes/variables.json');
+    if (courtesJSON) {
+      let n = 1;
+      while (courtesJSON[`Card${n}`]) {
+        addCarteCourte();
+        const id = cartesCourtesIdCounter;
+        const card = courtesJSON[`Card${n}`];
+        document.getElementById(`carteCourteConsigne_${id}`).value = card.Consigne || '';
+        document.getElementById(`carteCourteFront_${id}`).value = card.Front_Text || '';
+        document.getElementById(`carteCourteBack_${id}`).value = card.Back_Text || '';
+        // Load expression audio
+        if (card.Back_Audio) {
+          const blob = await readAudio(card.Back_Audio);
+          if (blob) {
+            cartesAudioBlobs.expressions[id] = blob;
+            refreshCarteAudioPreview('expressions', id);
+          }
+        }
+        // Restore extra
+        _importCarteExtra(`C${id}`, card.Extra);
+        n++;
+      }
+    }
+
+    // ── Import Longues ──
+    const longuesJSON = await readJSON('Ressources_FCs/Flashcards_Longues/variables.json');
+    if (longuesJSON) {
+      // Build a map: expression audio path → courtesStableId
+      const exprPathToId = {};
+      document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]').forEach((card, idx) => {
+        const sId = parseInt(card.id.replace('carteCourte_', ''));
+        exprPathToId[`Ressources_FCs/Audios/Expressions/FC_${idx + 1}.mp3`] = sId;
+      });
+
+      let n = 1;
+      while (longuesJSON[`Card${n}`]) {
+        addCarteLongue();
+        const id = cartesLonguesIdCounter;
+        const card = longuesJSON[`Card${n}`];
+        document.getElementById(`carteLongueConsigne_${id}`).value = card.Consigne || '';
+        document.getElementById(`carteLongueBack_${id}`).value = card.Back_Text || '';
+        // Restore Courte link (for Révision matching)
+        const refId = card.Courte_Ref ? parseInt(card.Courte_Ref) : null;
+        if (refId) {
+          const select = document.getElementById(`carteLongueFrontRef_${id}`);
+          if (select) { select.value = refId; updateCarteLongueFront(id); }
+        }
+        // Restore front text (may differ from Courte back text)
+        if (card.Front_Text) {
+          const frontEl = document.getElementById(`carteLongueFrontText_${id}`);
+          if (frontEl) frontEl.value = card.Front_Text;
+        }
+        // Load face avant audio
+        if (card.Front_Audio) {
+          const blob = await readAudio(card.Front_Audio);
+          if (blob) {
+            cartesAudioBlobs.longuesFront[id] = blob;
+            refreshCarteAudioPreview('longuesFront', id);
+          }
+        }
+        // Load face arrière audio
+        if (card.Back_Audio) {
+          const blob = await readAudio(card.Back_Audio);
+          if (blob) {
+            cartesAudioBlobs.longuesDef[id] = blob;
+            refreshCarteAudioPreview('longuesDef', id);
+          }
+        }
+        _importCarteExtra(`L${id}`, card.Extra);
+        n++;
+      }
+    }
+
+    // ── Import Révision ──
+    const revisionJSON = await readJSON('Ressources_FCs/Flashcards_Revision/variables.json');
+    if (revisionJSON) {
+      const exprPathToId = {};
+      document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]').forEach((card, idx) => {
+        const sId = parseInt(card.id.replace('carteCourte_', ''));
+        exprPathToId[`Ressources_FCs/Audios/Expressions/FC_${idx + 1}.mp3`] = sId;
+      });
+
+      let n = 1;
+      while (revisionJSON[`Matching${n}`]) {
+        addCarteRevision();
+        const id = cartesRevisionIdCounter;
+        const m = revisionJSON[`Matching${n}`];
+        document.getElementById(`carteRevisionConsigne_${id}`).value = m.Consigne || '';
+        const ref1 = m.Paire_1?.Audio_Expression?.fichier ? exprPathToId[m.Paire_1.Audio_Expression.fichier] : null;
+        const ref2 = m.Paire_2?.Audio_Expression?.fichier ? exprPathToId[m.Paire_2.Audio_Expression.fichier] : null;
+        if (ref1) { document.getElementById(`carteRevisionPaire1_${id}`).value = ref1; }
+        if (ref2) { document.getElementById(`carteRevisionPaire2_${id}`).value = ref2; }
+        updateCarteRevisionInfo(id);
+        n++;
+      }
+    }
+
+    // Rebuild sidebar nav lists and show first card of each section
+    const firstCardMap = {
+      courtes:  document.querySelector('#carteCourtesList [id^="carteCourte_"]'),
+      longues:  document.querySelector('#carteLonguesList [id^="carteLongue_"]'),
+      revision: document.querySelector('#carteRevisionList [id^="carteRevision_"]')
+    };
+    ['courtes', 'longues', 'revision'].forEach(s => {
+      rebuildCartesNavList(s);
+      const first = firstCardMap[s];
+      const firstId = first ? parseInt(first.id.replace(/[^0-9]/g, '')) : null;
+      showCarteCard(s, firstId);
+    });
+
+    hideImportOverlay(true);
+  } catch (e) {
+    console.error('Import cartes error:', e);
+    hideImportOverlay(false);
+    alert('Erreur lors de l\'import : ' + e.message);
+  }
+
+  // Reset file input so same file can be re-imported
+  event.target.value = '';
+}
+
+function _importCarteExtra(prefix, extra) {
+  if (!extra || extra.Type === 'Aucune' || !extra.Type) return;
+  const typeEl = document.getElementById(`carteExtraType_${prefix}`);
+  if (!typeEl) return;
+  typeEl.value = extra.Type;
+  updateCarteExtraFields(prefix);
+  if (extra.Type === 'Phrases' && Array.isArray(extra.Elements)) {
+    extra.Elements.forEach((phrase, i) => {
+      const el = document.getElementById(`carteExtraPhrase_${prefix}_${i + 1}`);
+      if (el) el.value = phrase;
+    });
+  } else if (extra.Type === 'Expressions' && Array.isArray(extra.Elements)) {
+    extra.Elements.forEach((item, i) => {
+      const exprEl = document.getElementById(`carteExtraExpr_${prefix}_${i + 1}`);
+      const exEl = document.getElementById(`carteExtraExemple_${prefix}_${i + 1}`);
+      if (exprEl) exprEl.value = item.Expression || '';
+      if (exEl) exEl.value = item.Exemple || '';
+    });
+  }
+}
+
+// ── Cartes Sidebar: Toggle section ────────────────────────────
+function toggleCartesSection(section) {
+  const header = document.getElementById(`cartesSideBtn_${section}`);
+  const list = document.getElementById(`cartesNavList_${section}`);
+  const addBtn = document.getElementById(`cartesAddBtn_${section}`);
+  if (!header || !list) return;
+  const isExpanded = header.classList.contains('expanded');
+  if (isExpanded) {
+    header.classList.remove('expanded');
+    list.style.display = 'none';
+    if (addBtn) addBtn.style.display = 'none';
+  } else {
+    header.classList.add('expanded');
+    list.style.display = 'block';
+    if (addBtn) addBtn.style.display = 'block';
+  }
+}
+
+function autoExpandCartesSection(section) {
+  const header = document.getElementById(`cartesSideBtn_${section}`);
+  if (header && !header.classList.contains('expanded')) toggleCartesSection(section);
+}
+
+// ── Cartes Sidebar: Rebuild nav list ──────────────────────────
+function rebuildCartesNavList(section) {
+  const cfgMap = {
+    courtes:  { listId: 'carteCourtesList',  prefix: 'carteCourte_',   label: 'Carte',    textFn: (id) => document.getElementById(`carteCourteFront_${id}`)?.value?.trim() || '' },
+    longues:  { listId: 'carteLonguesList',  prefix: 'carteLongue_',   label: 'Carte',    textFn: (id) => document.getElementById(`carteLongueFrontText_${id}`)?.value?.trim() || '' },
+    revision: { listId: 'carteRevisionList', prefix: 'carteRevision_', label: 'Matching', textFn: (id) => {
+      const courtes = [...document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]')];
+      const posOf = (stableId) => {
+        const idx = courtes.findIndex(c => parseInt(c.id.replace('carteCourte_', '')) === stableId);
+        return idx === -1 ? '?' : idx + 1;
+      };
+      const ref1 = parseInt(document.getElementById(`carteRevisionPaire1_${id}`)?.value);
+      const ref2 = parseInt(document.getElementById(`carteRevisionPaire2_${id}`)?.value);
+      if (!ref1 && !ref2) return '';
+      return `${ref1 ? posOf(ref1) : '?'} / ${ref2 ? posOf(ref2) : '?'}`;
+    }}
+  };
+  const cfg = cfgMap[section];
+  if (!cfg) return;
+  const navList = document.getElementById(`cartesNavList_${section}`);
+  if (!navList) return;
+  const cards = [...document.querySelectorAll(`#${cfg.listId} [id^="${cfg.prefix}"]`)];
+  navList.innerHTML = '';
+  const activeSId = currentCarteCardId[section];
+  cards.forEach((card, idx) => {
+    const stableId = parseInt(card.id.replace(cfg.prefix, ''));
+    const num = idx + 1;
+    const snippet = cfg.textFn(stableId);
+    const label = snippet ? snippet.substring(0, 25) + (snippet.length > 25 ? '\u2026' : '') : '';
+    // Drop zone before this item
+    navList.appendChild(_createCarteDropZone(section, idx));
+    // The item
+    const li = document.createElement('li');
+    li.dataset.stableId = stableId;
+    li.dataset.section = section;
+    if (stableId === activeSId) li.classList.add('active');
+    li.draggable = true;
+    li.innerHTML =
+      `<i class="bi bi-grip-vertical drag-handle"></i>` +
+      `<span class="flex-grow-1" onclick="showCartesTab('${section}'); showCarteCard('${section}',${stableId});" style="cursor:pointer;">` +
+        `<strong>${cfg.label} ${num}</strong>` +
+        (label ? ` <span class="exercise-type">&ndash; ${label}</span>` : '') +
+      `</span>`;
+    li.addEventListener('dragstart', _carteDragStart);
+    li.addEventListener('dragend', _carteDragEnd);
+    navList.appendChild(li);
+  });
+  // Final drop zone after last item
+  if (cards.length > 0) navList.appendChild(_createCarteDropZone(section, cards.length));
+}
+
