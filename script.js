@@ -28,8 +28,8 @@ const VOICE_WHITELIST = [
 const VOICE_WHITELIST_IDS = new Set(VOICE_WHITELIST.map(v => v.id));
 
 /*  ======  CONNEXION ENTREPRISE  ======  */
-// Both local (XAMPP) and production (cPanel) serve PHP on same origin
-const SERVER_URL = '';
+// Derived from current path so the app works at root or in any subfolder (e.g. /test/)
+const SERVER_URL = window.location.pathname.replace(/\/[^/]*$/, '');
 let sessionToken = sessionStorage.getItem('companySessionToken') || null;
 let companyName = sessionStorage.getItem('companyName') || '';
 let isCompanyLoggedIn = false;
