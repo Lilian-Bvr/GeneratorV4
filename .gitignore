@@ -1,13 +1,17 @@
 # API keys and secrets (stays only on server)
 api/config.php
 
-# Setup tool (should be deleted after use)
+# Setup tool (should be deleted after use, never committed)
+setup.php
 api/setup.php
+
+# User data — SQLite database, uploaded ZIPs, project files
+data/
 
 # SCORM preview temp files
 scorm-packages/
 
-# Sessions file
+# Sessions file (legacy)
 generator_sessions.json
 
 # IDE and tool config

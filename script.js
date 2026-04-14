@@ -1,3 +1,69 @@
+// ── Character counter ──────────────────────────────────────────────────────
+(function () {
+  const el = document.createElement('div');
+  el.id = 'charCounter';
+  document.body.appendChild(el);
+
+  function isTracked(t) {
+    return t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && t.type === 'text'));
+  }
+
+  function getRecommendedLimit(target) {
+    const id = target.id || '';
+    if (/^enonce_/.test(id))                                           return FIELD_LIMITS.enonce;
+    if (/^qcu[A-D]_/.test(id))                                        return FIELD_LIMITS.answer;
+    if (/^qcm[A-D]_/.test(id))                                        return FIELD_LIMITS.answer;
+    if (/^matchText_/.test(id))                                        return FIELD_LIMITS.matching_text;
+    if (/^texte_/.test(id))                                            return FIELD_LIMITS.complete_text;
+    if (/^opt\d+_/.test(id))                                           return FIELD_LIMITS.complete_option;
+    if (/^(carteCourteFront_|carteLongueFrontText_)/.test(id))         return FIELD_LIMITS.flashcard_front;
+    if (/^(carteCourteBack_|carteLongueBack_)/.test(id))               return FIELD_LIMITS.flashcard_back;
+    return null;
+  }
+
+  function update(target) {
+    const len = target.value.length;
+    const max = getRecommendedLimit(target);
+    el.textContent = max ? `${len} / ${max}` : `${len} car.`;
+    el.className = '';
+    if (max) {
+      if (len > max)              el.classList.add('danger');
+      else if (len >= max * 0.85) el.classList.add('warning');
+    }
+  }
+
+  function reposition(target) {
+    const r = target.getBoundingClientRect();
+    el.style.left = (r.right  - el.offsetWidth  - 6) + 'px';
+    el.style.top  = (r.bottom - el.offsetHeight - 6) + 'px';
+  }
+
+  document.addEventListener('focusin', e => {
+    if (!isTracked(e.target)) return;
+    update(e.target);
+    el.style.display = 'block';
+    reposition(e.target);
+  });
+
+  document.addEventListener('input', e => {
+    if (!isTracked(e.target)) return;
+    update(e.target);
+    reposition(e.target);
+  });
+
+  document.addEventListener('focusout', e => {
+    if (!isTracked(e.target)) return;
+    el.style.display = 'none';
+  });
+
+  // Keep counter in place while scrolling
+  document.addEventListener('scroll', () => {
+    if (el.style.display === 'block' && isTracked(document.activeElement)) {
+      reposition(document.activeElement);
+    }
+  }, true);
+})();
+
 /*  ======  INITIALISATION  ======  */
 const sections = { S1: { count: 0 }, S2: { count: 0 }, S3: { count: 0 }, S4: { count: 0 } };
 const imagesData = {};
@@ -27,96 +93,101 @@ const VOICE_WHITELIST = [
 ];
 const VOICE_WHITELIST_IDS = new Set(VOICE_WHITELIST.map(v => v.id));
 
-/*  ======  CONNEXION ENTREPRISE  ======  */
-// Derived from current path so the app works at root or in any subfolder (e.g. /test/)
+/*  ======  AUTH & SESSION  ======  */
 const SERVER_URL = window.location.pathname.replace(/\/[^/]*$/, '');
-let sessionToken = sessionStorage.getItem('companySessionToken') || null;
-let companyName = sessionStorage.getItem('companyName') || '';
-let isCompanyLoggedIn = false;
 
+let sessionToken      = sessionStorage.getItem('sessionToken') || null;
+let currentUser       = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
+let isCompanyLoggedIn = false; // kept for backward compat with other parts of the code
+
+// ── Helpers ────────────────────────────────────────────────────
+function authHeaders() {
+  return { 'Authorization': `Bearer ${sessionToken}` };
+}
+
+function clearSession() {
+  sessionToken      = null;
+  currentUser       = null;
+  isCompanyLoggedIn = false;
+  sessionStorage.removeItem('sessionToken');
+  sessionStorage.removeItem('currentUser');
+  _showScreen('gate');
+}
+
+function _showScreen(which) {
+  document.getElementById('appLoginGate').style.display      = which === 'gate'     ? 'flex'  : 'none';
+  document.getElementById('appProjectBrowser').style.display = which === 'browser'  ? 'block' : 'none';
+  document.getElementById('appFileBrowser').style.display    = which === 'files'    ? 'block' : 'none';
+  document.getElementById('appSequenceur').style.display     = which === 'sequenceur' ? 'block' : 'none';
+  document.getElementById('appCartes').style.display         = which === 'cartes'   ? 'block' : 'none';
+
+  const loggedBadge = document.getElementById('companyLoggedBadge');
+  const nameLabel   = document.getElementById('companyNameLabel');
+  if (which !== 'gate') {
+    if (loggedBadge) loggedBadge.style.display = 'flex';
+    if (nameLabel && currentUser) nameLabel.textContent = currentUser.name;
+  } else {
+    if (loggedBadge) loggedBadge.style.display = 'none';
+    setTimeout(() => document.getElementById('gateEmailInput')?.focus(), 50);
+  }
+
+  // Show "Save to project" buttons when in an editor with a project context (new or existing file)
+  const inFile = (which === 'sequenceur' || which === 'cartes') && _fbProjectId;
+  document.getElementById('saveToProjectBtn_seq')?.style &&
+    (document.getElementById('saveToProjectBtn_seq').style.display = inFile && which === 'sequenceur' ? 'inline-flex' : 'none');
+  document.getElementById('saveToProjectBtn_cartes')?.style &&
+    (document.getElementById('saveToProjectBtn_cartes').style.display = inFile && which === 'cartes' ? 'block' : 'none');
+}
+
+// ── Boot: check stored session ─────────────────────────────────
 async function checkSessionStatus() {
-  if (!sessionToken) return;
+  if (!sessionToken) { _showScreen('gate'); return; }
   try {
-    const res = await fetch(`${SERVER_URL}/auth/status`, {
-      headers: { 'Authorization': `Bearer ${sessionToken}` }
-    });
+    const res = await fetch(`${SERVER_URL}/api/users/me`, { headers: authHeaders() });
     if (res.ok) {
       const data = await res.json();
-      companyName = data.companyName || companyName;
+      currentUser       = data.user;
       isCompanyLoggedIn = true;
-      updateLoginUI(true);
+      sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+      showProjectBrowser();
     } else {
       clearSession();
     }
   } catch (e) {
-    console.warn('Server not reachable, company login unavailable');
+    console.warn('Server unreachable');
     clearSession();
   }
 }
 
-function showLoginModal() {
-  const existing = document.getElementById('companyLoginModal');
-  if (existing) existing.remove();
-  const modal = document.createElement('div');
-  modal.id = 'companyLoginModal';
-  modal.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;z-index:3000;backdrop-filter:blur(4px);';
-  modal.innerHTML = `
-    <div style="background:white;border-radius:12px;padding:28px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-        <h4 style="margin:0;color:#333;"><i class="bi bi-building"></i> Connexion Entreprise</h4>
-        <button onclick="closeLoginModal()" style="border:none;background:none;font-size:24px;cursor:pointer;color:#666;">&times;</button>
-      </div>
-      <p class="text-muted small">Connectez-vous avec le mot de passe de votre entreprise pour utiliser les clés API partagées.</p>
-      <div class="mb-3">
-        <label class="form-label fw-bold">Mot de passe</label>
-        <input type="password" id="companyPasswordInput" class="form-control" placeholder="Mot de passe entreprise"
-          onkeydown="if(event.key==='Enter')handleLogin()">
-      </div>
-      <div id="loginError" class="text-danger small mb-2" style="display:none;"></div>
-      <div class="d-flex gap-2">
-        <button class="btn btn-secondary flex-fill" onclick="closeLoginModal()">Annuler</button>
-        <button class="btn btn-primary flex-fill" id="loginSubmitBtn" onclick="handleLogin()">
-          <i class="bi bi-box-arrow-in-right"></i> Se connecter
-        </button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  setTimeout(() => document.getElementById('companyPasswordInput')?.focus(), 100);
-}
-
-function closeLoginModal() {
-  const modal = document.getElementById('companyLoginModal');
-  if (modal) modal.remove();
-}
-
-async function handleLogin() {
-  const pwd = document.getElementById('companyPasswordInput')?.value;
-  if (!pwd) return;
-  const errEl = document.getElementById('loginError');
-  const btn = document.getElementById('loginSubmitBtn');
+// ── Gate login ─────────────────────────────────────────────────
+async function handleGateLogin() {
+  const email = document.getElementById('gateEmailInput')?.value?.trim();
+  const pwd   = document.getElementById('gatePasswordInput')?.value;
+  if (!email || !pwd) return;
+  const errEl = document.getElementById('gateLoginError');
+  const btn   = document.getElementById('gateLoginBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Connexion...';
   errEl.style.display = 'none';
   try {
-    const res = await fetch(`${SERVER_URL}/auth/login`, {
+    const res = await fetch(`${SERVER_URL}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pwd })
+      body: JSON.stringify({ email, password: pwd })
     });
     const data = await res.json();
     if (res.ok && data.token) {
-      sessionToken = data.token;
-      companyName = data.companyName || 'Entreprise';
+      sessionToken      = data.token;
+      currentUser       = data.user;
       isCompanyLoggedIn = true;
-      sessionStorage.setItem('companySessionToken', sessionToken);
-      sessionStorage.setItem('companyName', companyName);
-      updateLoginUI(true);
-      closeLoginModal();
-      // Pre-load ElevenLabs voices via proxy
+      sessionStorage.setItem('sessionToken', sessionToken);
+      sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+      document.getElementById('gatePasswordInput').value = '';
+      document.getElementById('gateEmailInput').value    = '';
       loadElevenLabsVoices();
+      showProjectBrowser();
     } else {
-      errEl.textContent = data.error || 'Mot de passe incorrect';
+      errEl.textContent = data.error || 'Email ou mot de passe incorrect';
       errEl.style.display = 'block';
     }
   } catch (e) {
@@ -124,120 +195,837 @@ async function handleLogin() {
     errEl.style.display = 'block';
   }
   btn.disabled = false;
-  btn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Se connecter';
+  btn.innerHTML = '<i class="bi bi-box-arrow-in-right me-1"></i> Se connecter';
 }
 
 async function handleLogout() {
   try {
-    await fetch(`${SERVER_URL}/auth/logout`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${sessionToken}` }
-    });
+    await fetch(`${SERVER_URL}/api/users/logout`, { method: 'POST', headers: authHeaders() });
   } catch (e) { /* ignore */ }
   clearSession();
 }
 
-async function handleGateLogin() {
-  const pwd = document.getElementById('gatePasswordInput')?.value;
-  if (!pwd) return;
-  const errEl = document.getElementById('gateLoginError');
-  const btn = document.getElementById('gateLoginBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Connexion...';
-  errEl.style.display = 'none';
+// Legacy stubs (called elsewhere in the codebase)
+function showLoginModal()  { /* no-op: gate is the login screen now */ }
+function closeLoginModal() { /* no-op */ }
+async function handleLogin() { await handleGateLogin(); }
+function updateLoginUI(loggedIn) {
+  if (!loggedIn) clearSession();
+}
+
+/*  ======  PROJECT BROWSER  ======  */
+
+let _pbAllUsers = [];  // cached for assign UI
+
+function showProjectBrowser() {
+  _showScreen('browser');
+  document.getElementById('pbWelcome').textContent = `Bonjour, ${currentUser?.name || ''} !`;
+  const isAdmin = currentUser?.role === 'admin';
+  document.getElementById('pbAdminBadge').style.display   = isAdmin ? 'inline-block' : 'none';
+  document.getElementById('pbAdminTab').style.display     = isAdmin ? 'list-item'    : 'none';
+  document.getElementById('pbModelesTab').style.display   = isAdmin ? 'list-item'    : 'none';
+  document.getElementById('pbNewProjectBtn').style.display = isAdmin ? 'inline-block' : 'none';
+  pbShowTab('projects');
+}
+
+function pbShowTab(tab) {
+  document.getElementById('pbTabProjects').style.display = tab === 'projects' ? 'block' : 'none';
+  document.getElementById('pbTabUsers').style.display    = tab === 'users'    ? 'block' : 'none';
+  document.getElementById('pbTabModeles').style.display  = tab === 'modeles'  ? 'block' : 'none';
+  document.querySelectorAll('#pbTabs .nav-link').forEach(l => l.classList.remove('active'));
+  const tabMap = { projects: 0, users: 1, modeles: 2 };
+  document.querySelectorAll('#pbTabs .nav-link')[tabMap[tab] ?? 0]?.classList.add('active');
+  if (tab === 'projects') pbLoadProjects();
+  if (tab === 'users')    pbLoadUsers();
+  if (tab === 'modeles')  pbLoadModeles();
+}
+
+async function pbLoadModeles() {
   try {
-    const res = await fetch(`${SERVER_URL}/auth/login`, {
+    const timestamps = await _getModeleTimestamps();
+    ['Modele', 'Modele_Flashcards', 'Modele_QuickPreview'].forEach(name => {
+      const ts = timestamps[name];
+      const el = document.getElementById(`modeleDate_${name}`);
+      if (!el) return;
+      el.textContent = ts
+        ? new Date(ts * 1000).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : 'Inconnue';
+    });
+  } catch (e) { /* silently fail */ }
+}
+
+async function pbUploadModele(name, input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  const nameEl   = document.getElementById(`modeleFileName_${name}`);
+  const statusEl = document.getElementById(`modeleStatus_${name}`);
+
+  nameEl.textContent = file.name;
+  statusEl.innerHTML = `<span class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span> Upload en cours…</span>`;
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch(`${SERVER_URL}/api/admin/modeles/${name}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pwd })
+      headers: authHeaders(),
+      body: formData
     });
     const data = await res.json();
-    if (res.ok && data.token) {
-      sessionToken = data.token;
-      companyName = data.companyName || 'Entreprise';
-      isCompanyLoggedIn = true;
-      sessionStorage.setItem('companySessionToken', sessionToken);
-      sessionStorage.setItem('companyName', companyName);
-      updateLoginUI(true);
-      loadElevenLabsVoices();
-      document.getElementById('gatePasswordInput').value = '';
+    if (!res.ok || !data.success) throw new Error(data.error || 'Erreur serveur');
+    statusEl.innerHTML = `<span class="text-success small"><i class="bi bi-check-circle me-1"></i> Mis à jour avec succès</span>`;
+    pbLoadModeles();
+  } catch (e) {
+    statusEl.innerHTML = `<span class="text-danger small"><i class="bi bi-x-circle me-1"></i> ${e.message}</span>`;
+  }
+}
+
+async function pbLoadProjects() {
+  const container = document.getElementById('pbProjectList');
+  container.innerHTML = '<div class="col-12 text-center text-muted py-5"><div class="spinner-border spinner-border-sm me-2"></div> Chargement…</div>';
+  try {
+    const res = await fetch(`${SERVER_URL}/api/projects`, { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const projects = data.projects;
+    if (projects.length === 0) {
+      container.innerHTML = '<div class="col-12 text-center text-muted py-5"><i class="bi bi-folder2 d-block" style="font-size:3rem;opacity:0.2;"></i><p class="mt-3">Aucun projet pour l\'instant.</p></div>';
+      return;
+    }
+    container.innerHTML = projects.map(p => `
+      <div class="col-md-4 col-lg-3">
+        <div class="card h-100 shadow-sm" style="cursor:pointer;" onclick="fbOpen('${p.id}','${_escJs(p.name)}','${_escJs(p.description || '')}')">
+          <div class="card-body">
+            <h6 class="card-title mb-1">${_esc(p.name)}</h6>
+            <p class="text-muted small mb-2">${_esc(p.description || '')}</p>
+            <div class="d-flex gap-2 flex-wrap">
+              <span class="badge bg-light text-dark border"><i class="bi bi-file-earmark me-1"></i>${p.file_count} fichier${p.file_count > 1 ? 's' : ''}</span>
+            </div>
+          </div>
+          <div class="card-footer bg-transparent border-top-0 d-flex justify-content-between align-items-center py-2">
+            <small class="text-muted">Par ${_esc(p.created_by_name)}</small>
+            ${currentUser?.role === 'admin' ? `
+              <div class="d-flex gap-1" onclick="event.stopPropagation()">
+                <button class="btn btn-xs btn-outline-secondary p-1" title="Modifier"
+                        onclick="pbEditProject('${p.id}','${_escJs(p.name)}','${_escJs(p.description || '')}')">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-xs btn-outline-danger p-1" title="Supprimer"
+                        onclick="pbDeleteProject('${p.id}','${_escJs(p.name)}')">
+                  <i class="bi bi-trash3"></i>
+                </button>
+              </div>` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="col-12"><div class="alert alert-danger">Erreur : ${e.message}</div></div>`;
+  }
+}
+
+async function pbLoadUsers() {
+  const container = document.getElementById('pbUserList');
+  container.innerHTML = '<div class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm me-2"></div> Chargement…</div>';
+  try {
+    const res  = await fetch(`${SERVER_URL}/api/admin/users`, { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    _pbAllUsers = data.users;
+    container.innerHTML = `
+      <table class="table table-hover bg-white rounded shadow-sm">
+        <thead><tr>
+          <th>Nom</th><th>Email</th><th>Rôle</th><th>Créé le</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${data.users.map(u => `
+            <tr>
+              <td>${_esc(u.name)}</td>
+              <td class="text-muted">${_esc(u.email)}</td>
+              <td><span class="badge ${u.role === 'admin' ? 'bg-warning text-dark' : 'bg-secondary'}">${u.role}</span></td>
+              <td class="text-muted small">${new Date(u.created_at * 1000).toLocaleDateString('fr-FR')}</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-secondary me-1" onclick="pbOpenEditUserModal(${JSON.stringify(u).replace(/"/g,'&quot;')})">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                ${u.id !== currentUser?.id ? `
+                <button class="btn btn-sm btn-outline-danger" onclick="pbDeleteUser(${u.id},'${_esc(u.name)}')">
+                  <i class="bi bi-trash3"></i>
+                </button>` : ''}
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    container.innerHTML = `<div class="alert alert-danger">Erreur : ${e.message}</div>`;
+  }
+}
+
+// ── New project modal ──────────────────────────────────────────
+function pbOpenNewProjectModal() {
+  document.getElementById('pbNewProjectName').value = '';
+  document.getElementById('pbNewProjectDesc').value = '';
+  document.getElementById('pbNewProjectError').style.display = 'none';
+  _pbRenderUserCheckboxes('pbNewProjectUsers', []);
+  new bootstrap.Modal(document.getElementById('pbNewProjectModal')).show();
+}
+
+function _pbRenderUserCheckboxes(containerId, selectedIds) {
+  const container = document.getElementById(containerId);
+  if (!_pbAllUsers.length) {
+    // Fetch users first if not loaded
+    fetch(`${SERVER_URL}/api/admin/users`, { headers: authHeaders() })
+      .then(r => r.json()).then(d => {
+        _pbAllUsers = d.users || [];
+        _pbRenderUserCheckboxes(containerId, selectedIds);
+      });
+    return;
+  }
+  container.innerHTML = _pbAllUsers.filter(u => u.id !== currentUser?.id).map(u => `
+    <div class="form-check form-check-inline">
+      <input class="form-check-input" type="checkbox" id="pbAssign_${u.id}" value="${u.id}"
+             ${selectedIds.includes(u.id) ? 'checked' : ''}>
+      <label class="form-check-label small" for="pbAssign_${u.id}">${_esc(u.name)}</label>
+    </div>`).join('');
+}
+
+async function pbCreateProject() {
+  const name = document.getElementById('pbNewProjectName').value.trim();
+  const desc = document.getElementById('pbNewProjectDesc').value.trim();
+  const errEl = document.getElementById('pbNewProjectError');
+  if (!name) { errEl.textContent = 'Le nom est obligatoire.'; errEl.style.display = 'block'; return; }
+
+  const userIds = [...document.querySelectorAll('#pbNewProjectUsers input:checked')].map(el => parseInt(el.value));
+
+  try {
+    const res  = await fetch(`${SERVER_URL}/api/projects`, {
+      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description: desc })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    // Assign users
+    if (userIds.length) {
+      await fetch(`${SERVER_URL}/api/projects/${data.project.id}/assign`, {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_ids: userIds })
+      });
+    }
+    bootstrap.Modal.getInstance(document.getElementById('pbNewProjectModal')).hide();
+    pbLoadProjects();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
+  }
+}
+
+async function pbDeleteProject(id, name) {
+  if (!confirm(`Supprimer le projet "${name}" et tous ses fichiers ? Cette action est irréversible.`)) return;
+  const res = await fetch(`${SERVER_URL}/api/projects/${id}`, { method: 'DELETE', headers: authHeaders() });
+  if (res.ok) pbLoadProjects();
+  else { const d = await res.json(); alert(d.error); }
+}
+
+function pbEditProject(id, name, desc) {
+  // Reuse new project modal for editing
+  document.getElementById('pbNewProjectName').value = name;
+  document.getElementById('pbNewProjectDesc').value = desc;
+  document.getElementById('pbNewProjectError').style.display = 'none';
+  // Fetch current assignees then render
+  fetch(`${SERVER_URL}/api/projects/${id}`, { headers: authHeaders() })
+    .then(r => r.json()).then(d => {
+      const assignedIds = (d.project.assignees || []).map(u => u.id);
+      _pbRenderUserCheckboxes('pbNewProjectUsers', assignedIds);
+    });
+  const modal = new bootstrap.Modal(document.getElementById('pbNewProjectModal'));
+  // Swap "Créer" button to "Enregistrer"
+  const btn = document.querySelector('#pbNewProjectModal .btn-primary');
+  btn.textContent = 'Enregistrer';
+  btn.onclick = async () => {
+    const newName = document.getElementById('pbNewProjectName').value.trim();
+    const newDesc = document.getElementById('pbNewProjectDesc').value.trim();
+    if (!newName) return;
+    const userIds = [...document.querySelectorAll('#pbNewProjectUsers input:checked')].map(el => parseInt(el.value));
+    await fetch(`${SERVER_URL}/api/projects/${id}`, {
+      method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName, description: newDesc })
+    });
+    await fetch(`${SERVER_URL}/api/projects/${id}/assign`, {
+      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_ids: userIds })
+    });
+    bootstrap.Modal.getInstance(document.getElementById('pbNewProjectModal')).hide();
+    // Reset button
+    btn.textContent = 'Créer';
+    btn.onclick = pbCreateProject;
+    pbLoadProjects();
+  };
+  modal.show();
+}
+
+// ── User modals ────────────────────────────────────────────────
+function pbOpenNewUserModal() {
+  document.getElementById('pbUserModalTitle').textContent = 'Nouvel utilisateur';
+  document.getElementById('pbUserName').value     = '';
+  document.getElementById('pbUserEmail').value    = '';
+  document.getElementById('pbUserPassword').value = '';
+  document.getElementById('pbUserRole').value     = 'user';
+  document.getElementById('pbUserPasswordLabel').innerHTML = 'Mot de passe <span class="text-danger">*</span>';
+  document.getElementById('pbUserError').style.display = 'none';
+  const btn = document.getElementById('pbUserSaveBtn');
+  btn.textContent = 'Créer';
+  btn.dataset.editId = '';
+  new bootstrap.Modal(document.getElementById('pbUserModal')).show();
+}
+
+function pbOpenEditUserModal(user) {
+  document.getElementById('pbUserModalTitle').textContent = 'Modifier l\'utilisateur';
+  document.getElementById('pbUserName').value     = user.name;
+  document.getElementById('pbUserEmail').value    = user.email;
+  document.getElementById('pbUserPassword').value = '';
+  document.getElementById('pbUserRole').value     = user.role;
+  document.getElementById('pbUserPasswordLabel').innerHTML = 'Nouveau mot de passe <span class="fw-normal text-muted">(laisser vide pour ne pas changer)</span>';
+  document.getElementById('pbUserError').style.display = 'none';
+  const btn = document.getElementById('pbUserSaveBtn');
+  btn.textContent = 'Enregistrer';
+  btn.dataset.editId = user.id;
+  new bootstrap.Modal(document.getElementById('pbUserModal')).show();
+}
+
+async function pbSaveUser() {
+  const btn     = document.getElementById('pbUserSaveBtn');
+  const editId  = btn.dataset.editId;
+  const name    = document.getElementById('pbUserName').value.trim();
+  const email   = document.getElementById('pbUserEmail').value.trim();
+  const password = document.getElementById('pbUserPassword').value;
+  const role    = document.getElementById('pbUserRole').value;
+  const errEl   = document.getElementById('pbUserError');
+  errEl.style.display = 'none';
+
+  const body = { name, email, role };
+  if (password) body.password = password;
+
+  try {
+    let res;
+    if (editId) {
+      res = await fetch(`${SERVER_URL}/api/admin/users/${editId}`, {
+        method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
     } else {
-      errEl.textContent = data.error || 'Mot de passe incorrect';
-      errEl.style.display = 'block';
+      if (!password) { errEl.textContent = 'Mot de passe obligatoire'; errEl.style.display = 'block'; return; }
+      res = await fetch(`${SERVER_URL}/api/admin/users`, {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    bootstrap.Modal.getInstance(document.getElementById('pbUserModal')).hide();
+    pbLoadUsers();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
+  }
+}
+
+async function pbDeleteUser(id, name) {
+  if (!confirm(`Supprimer l'utilisateur "${name}" ?`)) return;
+  const res = await fetch(`${SERVER_URL}/api/admin/users/${id}`, { method: 'DELETE', headers: authHeaders() });
+  if (res.ok) pbLoadUsers();
+  else { const d = await res.json(); alert(d.error); }
+}
+
+/*  ======  FILE BROWSER  ======  */
+
+let _fbProjectId      = null;
+let _fbAllFiles       = [];
+let _fbFilteredFiles  = [];
+let _modeleTimestamps = {};
+
+function fbBack() {
+  _fbProjectId = null;
+  _fbAllFiles  = [];
+  showProjectBrowser();
+}
+
+async function fbOpen(projectId, name, desc) {
+  _fbProjectId = projectId;
+  document.getElementById('fbProjectName').textContent = name;
+  document.getElementById('fbProjectDesc').textContent = desc;
+  _showScreen('files');
+  fbClearFilters();
+  await fbLoadFiles();
+}
+
+async function fbLoadFiles() {
+  const container = document.getElementById('fbFileList');
+  container.innerHTML = '<div class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm me-2"></div> Chargement…</div>';
+  try {
+    const [filesRes, tsRes] = await Promise.all([
+      fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files`, { headers: authHeaders() }),
+      fetch(`${SERVER_URL}/api/modeles/timestamps`, { headers: authHeaders() })
+    ]);
+    const data = await filesRes.json();
+    if (!filesRes.ok) throw new Error(data.error);
+    _fbAllFiles = data.files;
+    if (tsRes.ok) _modeleTimestamps = await tsRes.json();
+    _populateAuthorFilter();
+    fbApplyFilters();
+  } catch (e) {
+    container.innerHTML = `<div class="alert alert-danger">Erreur : ${e.message}</div>`;
+  }
+}
+
+function _populateAuthorFilter() {
+  const sel  = document.getElementById('fbFilterAuthor');
+  const cur  = sel.value;
+  const seen = new Set();
+  sel.innerHTML = '<option value="">Tous les auteurs</option>';
+  _fbAllFiles.forEach(f => {
+    if (!seen.has(f.author_id)) {
+      seen.add(f.author_id);
+      const opt = document.createElement('option');
+      opt.value = f.author_id;
+      opt.textContent = f.author_name;
+      if (f.author_id == cur) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  });
+}
+
+function fbApplyFilters() {
+  const search  = document.getElementById('fbSearch').value.toLowerCase();
+  const type    = document.getElementById('fbFilterType').value;
+  const level   = document.getElementById('fbFilterLevel').value;
+  const author  = document.getElementById('fbFilterAuthor').value;
+
+  _fbFilteredFiles = _fbAllFiles.filter(f => {
+    if (search && !f.name.toLowerCase().includes(search)) return false;
+    if (type   && f.type !== type)                        return false;
+    if (level  && f.level != level)                       return false;
+    if (author && f.author_id != author)                  return false;
+    return true;
+  });
+  fbRenderFiles();
+}
+
+function fbClearFilters() {
+  document.getElementById('fbSearch').value       = '';
+  document.getElementById('fbFilterType').value   = '';
+  document.getElementById('fbFilterLevel').value  = '';
+  document.getElementById('fbFilterAuthor').value = '';
+  _fbFilteredFiles = _fbAllFiles;
+  fbRenderFiles();
+}
+
+const LEVEL_LABELS = ['—', '1', '2', '3', '4', '5'];
+
+function fbRenderFiles() {
+  const container = document.getElementById('fbFileList');
+  if (!_fbFilteredFiles.length) {
+    container.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-search d-block" style="font-size:2.5rem;opacity:0.2;"></i><p class="mt-3">Aucun fichier trouvé.</p></div>';
+    return;
+  }
+  container.innerHTML = `
+    <table class="table table-hover bg-white rounded shadow-sm">
+      <thead>
+        <tr>
+          <th>Nom</th><th>Type</th><th>Niveau</th><th>Auteur</th><th>Modifié le</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${_fbFilteredFiles.map(f => {
+          const mKey       = f.type === 'flashcards' ? 'Modele_Flashcards' : 'Modele';
+          const mCurrent   = _modeleTimestamps[mKey];
+          const isOutdated = f.modele_saved_at && mCurrent && mCurrent > f.modele_saved_at;
+          const mDate      = f.modele_saved_at
+            ? new Date(f.modele_saved_at * 1000).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' })
+            : null;
+          return `
+          <tr>
+            <td>
+              <strong>${_esc(f.name)}</strong>
+              ${f.parent_id ? `<br><small class="text-muted">Copie de <em>${_esc(f.parent_name || '?')}</em></small>` : ''}
+              ${mDate ? `<br><small style="color:${isOutdated ? '#fd7e14' : '#6c757d'}">${isOutdated ? '<i class="bi bi-exclamation-triangle-fill me-1"></i>' : ''}Modèle du ${mDate}${isOutdated ? ' — mis à jour' : ''}</small>` : ''}
+            </td>
+            <td><span class="badge ${f.type === 'sequence' ? 'bg-primary' : 'bg-success'}">${f.type === 'sequence' ? 'Séquence' : 'Flashcards'}</span></td>
+            <td><span class="badge bg-light text-dark border">${LEVEL_LABELS[f.level] || '—'}</span></td>
+            <td>${_esc(f.author_name)}</td>
+            <td class="text-muted small">${_relativeTime(f.updated_at)}</td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-primary me-1" onclick="fbOpenFile(${JSON.stringify(f).replace(/"/g,'&quot;')})">
+                <i class="bi bi-pencil-square me-1"></i> Ouvrir
+              </button>
+              <button class="btn btn-sm btn-outline-secondary me-1" onclick="fbDuplicateFile('${f.id}', ${JSON.stringify(f.name).replace(/"/g,'&quot;')})">
+                <i class="bi bi-copy"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-secondary me-1" onclick="fbDownloadFile('${f.id}', ${JSON.stringify(f.name).replace(/"/g,'&quot;')})">
+                <i class="bi bi-download"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-primary me-1" onclick="fbPreviewFile('${f.id}')" title="Prévisualiser">
+                <i class="bi bi-play-circle"></i>
+              </button>
+              ${currentUser?.role === 'admin' || f.author_id == currentUser?.id ? `
+              <button class="btn btn-sm btn-outline-danger" onclick="fbDeleteFile('${f.id}', ${JSON.stringify(f.name).replace(/"/g,'&quot;')})">
+                <i class="bi bi-trash3"></i>
+              </button>` : ''}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function _relativeTime(ts) {
+  const diff = Math.floor(Date.now() / 1000) - ts;
+  if (diff < 60)        return 'À l\'instant';
+  if (diff < 3600)      return `Il y a ${Math.floor(diff/60)} min`;
+  if (diff < 86400)     return `Il y a ${Math.floor(diff/3600)} h`;
+  if (diff < 86400*30)  return `Il y a ${Math.floor(diff/86400)} j`;
+  return new Date(ts * 1000).toLocaleDateString('fr-FR');
+}
+
+function fbNewFile() {
+  document.getElementById('fbNewFileName').value  = '';
+  document.getElementById('fbNewFileType').value  = 'sequence';
+  document.getElementById('fbNewFileLevel').value = '0';
+  document.getElementById('fbNewFileError').style.display = 'none';
+  new bootstrap.Modal(document.getElementById('fbNewFileModal')).show();
+}
+
+function fbCreateNewFile() {
+  const name  = document.getElementById('fbNewFileName').value.trim();
+  const type  = document.getElementById('fbNewFileType').value;
+  const level = document.getElementById('fbNewFileLevel').value;
+  const errEl = document.getElementById('fbNewFileError');
+  if (!name) { errEl.textContent = 'Le nom est obligatoire.'; errEl.style.display = 'block'; return; }
+  bootstrap.Modal.getInstance(document.getElementById('fbNewFileModal')).hide();
+  // Open the editor — file will be saved when user clicks "Save to project"
+  _currentFileId      = null; // new file, no ID yet
+  _currentFileMeta    = { name, type, level: parseInt(level) };
+  selectMode(type === 'flashcards' ? 'cartes' : 'sequenceur');
+}
+
+async function fbOpenFile(file) {
+  // Download the ZIP, then import it into the editor
+  _currentFileId   = file.id;
+  _currentFileMeta = { name: file.name, type: file.type, level: file.level };
+
+  try {
+    const res = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files/${file.id}/download`, {
+      headers: authHeaders()
+    });
+    if (!res.ok) throw new Error('Impossible de télécharger le fichier');
+    const blob = await res.blob();
+    const zipFile = new File([blob], file.name + '.zip', { type: 'application/zip' });
+
+    if (file.type === 'flashcards') {
+      selectMode('cartes');
+      setTimeout(() => importCartes(zipFile), 300);
+    } else {
+      selectMode('sequenceur');
+      setTimeout(() => importZipProject(zipFile), 300);
     }
   } catch (e) {
-    errEl.textContent = 'Impossible de joindre le serveur';
-    errEl.style.display = 'block';
+    alert('Erreur : ' + e.message);
   }
-  btn.disabled = false;
-  btn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Se connecter';
 }
 
-function clearSession() {
-  sessionToken = null;
-  companyName = '';
-  isCompanyLoggedIn = false;
-  sessionStorage.removeItem('companySessionToken');
-  sessionStorage.removeItem('companyName');
-  updateLoginUI(false);
+async function fbPreviewFile(fileId) {
+  // Check if the Modele used to build this file is outdated
+  const file = _fbAllFiles.find(f => f.id === fileId);
+  if (file?.modele_saved_at) {
+    const timestamps = await _getModeleTimestamps();
+    const modeleKey  = file.type === 'flashcards' ? 'Modele_Flashcards' : 'Modele';
+    if (timestamps[modeleKey] && timestamps[modeleKey] > file.modele_saved_at) {
+      const upgrade = confirm(
+        'Le modèle de ce fichier a été mis à jour depuis la dernière sauvegarde.\n\n' +
+        'Voulez-vous régénérer ce fichier avec le nouveau modèle avant de prévisualiser ?\n\n' +
+        '(Cliquez "Annuler" pour prévisualiser la version actuelle sans modification.)'
+      );
+      if (upgrade) {
+        try {
+          await fbUpgradeModele(fileId);
+        } catch (e) {
+          alert('Erreur lors de la mise à jour du modèle : ' + e.message);
+          return;
+        }
+        // fall through to normal preview below
+      }
+    }
+  }
+
+  deleteCurrentPackage();
+  const modal = new bootstrap.Modal(document.getElementById('scormPlayerModal'));
+  modal.show();
+  const loadingDiv = document.getElementById('scormLoading');
+  const iframe     = document.getElementById('scormPlayerFrame');
+  if (loadingDiv) loadingDiv.style.cssText = 'display: flex !important;';
+  if (iframe) { iframe.style.display = 'block'; iframe.src = 'about:blank'; }
+  try {
+    updateLoadingStatus('Téléchargement du fichier...', 20);
+    const dlRes = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files/${fileId}/download`, {
+      headers: authHeaders()
+    });
+    if (!dlRes.ok) throw new Error('Impossible de télécharger le fichier');
+    const zipBlob = await dlRes.blob();
+
+    updateLoadingStatus('Upload vers le serveur...', 60);
+    const upRes = await fetch(`${SERVER_URL}/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/zip' },
+      body: zipBlob
+    });
+    if (!upRes.ok) throw new Error(`Erreur serveur: ${upRes.status}`);
+    const result = await upRes.json();
+    if (!result.success) throw new Error(result.error || 'Upload échoué');
+
+    currentPackageId = result.packageId;
+    updateLoadingStatus('Chargement du contenu...', 90);
+    let shown = false;
+    const showContent = () => {
+      if (shown) return; shown = true;
+      if (loadingDiv) loadingDiv.style.cssText = 'display: none !important;';
+    };
+    iframe.onload = () => { if (iframe.src !== 'about:blank') showContent(); };
+    setTimeout(showContent, 4000);
+    iframe.src = result.launchUrl;
+  } catch (e) {
+    if (loadingDiv) loadingDiv.style.cssText = 'display: none !important;';
+    deleteCurrentPackage();
+    alert('Erreur de prévisualisation : ' + e.message);
+  }
 }
 
-function updateLoginUI(loggedIn) {
-  const gate = document.getElementById('appLoginGate');
-  const modeSelector = document.getElementById('appModeSelector');
-  const loggedBadge = document.getElementById('companyLoggedBadge');
-  const nameLabel = document.getElementById('companyNameLabel');
-  const fixedBar = document.getElementById('fixedActionBar');
-  if (loggedIn) {
-    if (gate) gate.style.display = 'none';
-    if (modeSelector) { modeSelector.style.display = 'flex'; }
-    if (loggedBadge) loggedBadge.style.display = 'flex';
-    if (nameLabel) nameLabel.textContent = companyName;
-    if (fixedBar) fixedBar.style.display = 'none'; // hidden until sequenceur mode selected
-  } else {
-    if (gate) gate.style.display = 'flex';
-    if (modeSelector) modeSelector.style.display = 'none';
-    document.getElementById('appSequenceur').style.display = 'none';
-    document.getElementById('appCartes').style.display = 'none';
-    if (loggedBadge) loggedBadge.style.display = 'none';
-    if (fixedBar) fixedBar.style.display = 'none';
-    setTimeout(() => document.getElementById('gatePasswordInput')?.focus(), 50);
+async function fbUpgradeModele(fileId) {
+  const res = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files/${fileId}/upgrade-modele`, {
+    method: 'POST',
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Erreur lors de la mise à jour');
   }
+  const data = await res.json();
+  // Update in-memory file list so the warning badge reflects the new state
+  const file = _fbAllFiles.find(f => f.id === fileId);
+  if (file) {
+    file.modele_saved_at = data.modele_saved_at;
+    file.updated_at      = data.updated_at;
+  }
+  fbRenderFiles();
+  return data;
+}
+
+async function fbDuplicateFile(fileId, name) {
+  const res  = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files/${fileId}/duplicate`, {
+    method: 'POST', headers: authHeaders()
+  });
+  const data = await res.json();
+  if (res.ok) { await fbLoadFiles(); }
+  else alert(data.error);
+}
+
+function fbDownloadFile(fileId, name) {
+  const a = document.createElement('a');
+  a.href = `${SERVER_URL}/api/projects/${_fbProjectId}/files/${fileId}/download?token=${encodeURIComponent(sessionToken)}`;
+  a.download = name + '.zip';
+  a.click();
+}
+
+async function fbDeleteFile(fileId, name) {
+  if (!confirm(`Supprimer "${name}" ? Cette action est irréversible.`)) return;
+  const res  = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files/${fileId}`, {
+    method: 'DELETE', headers: authHeaders()
+  });
+  if (res.ok) fbLoadFiles();
+  else { const d = await res.json(); alert(d.error); }
+}
+
+/*  ======  SAVE TO PROJECT  ======  */
+
+let _currentFileId    = null;  // null = new unsaved file
+let _currentFileMeta  = null;  // { name, type, level }
+let _autoSaveTimer    = null;
+let _autoSaveEnabled  = false;
+
+function _scheduleAutoSave() {
+  if (!_autoSaveEnabled || !_fbProjectId) return;
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => saveToProject(true), 15000); // 15s debounce
+}
+
+async function _getModeleTimestamps() {
+  try {
+    const res = await fetch(`${SERVER_URL}/api/modeles/timestamps`, { headers: authHeaders() });
+    if (res.ok) return await res.json();
+  } catch {}
+  return {};
+}
+
+async function saveToProject(isAuto = false) {
+  if (!_fbProjectId) return;
+  const meta = _currentFileMeta;
+  if (!meta) return;
+
+  const btn = document.getElementById(meta.type === 'flashcards' ? 'saveToProjectBtn_cartes' : 'saveToProjectBtn_seq');
+  const origLabel = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sauvegarde…'; }
+
+  try {
+    // Build the ZIP
+    let zip;
+    if (meta.type === 'flashcards') {
+      zip = await _buildCartesZip();
+    } else {
+      zip = await generateSCORMPackageInMemory();
+    }
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+
+    // Always read name/level from the editor fields (import sets them programmatically,
+    // so oninput doesn't fire — _currentFileMeta may be stale)
+    const isCartes = meta.type === 'flashcards';
+    const titleEl  = document.getElementById(isCartes ? 'cartesDeckTitle' : 'chapterTitle');
+    const levelEl  = document.getElementById(isCartes ? 'cartesDeckLevel' : 'chapterLevel');
+    const saveName  = titleEl?.value.trim() || meta.name;
+    const saveLevel = parseInt(levelEl?.value) || meta.level || 0;
+    meta.name  = saveName;
+    meta.level = saveLevel;
+
+    const timestamps = await _getModeleTimestamps();
+    const modeleKey  = meta.type === 'flashcards' ? 'Modele_Flashcards' : 'Modele';
+    const modeleSavedAt = timestamps[modeleKey] || null;
+
+    const form = new FormData();
+    form.append('zip',     new File([blob], saveName + '.zip', { type: 'application/zip' }));
+    form.append('name',    saveName);
+    form.append('type',    meta.type);
+    form.append('level',   saveLevel);
+    if (_currentFileId)  form.append('file_id',         _currentFileId);
+    if (modeleSavedAt)   form.append('modele_saved_at', modeleSavedAt);
+
+    const res  = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: form
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    // Update file id (may have forked)
+    if (!_currentFileId || data.forked) {
+      _currentFileId = data.file_id;
+      if (data.forked) {
+        _currentFileMeta.name = data.name;
+        if (!isAuto) alert(`Une copie a été créée : "${data.name}"`);
+      }
+    }
+
+    if (btn) {
+      btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Sauvegardé !';
+      setTimeout(() => { if (btn) { btn.disabled = false; btn.innerHTML = origLabel; } }, 2000);
+    }
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+    if (!isAuto) alert('Erreur de sauvegarde : ' + e.message);
+    else console.warn('Auto-save failed:', e.message);
+  }
+}
+
+// Hook auto-save into editor changes (called from existing save triggers)
+function _onEditorChange() {
+  _scheduleAutoSave();
+}
+
+function clearSequenceur() {
+  for (const s of ["S1", "S2", "S3", "S4"]) {
+    document.getElementById(`exercices_${s}`).innerHTML = "";
+    sections[s].count = 0;
+  }
+  if (typeof updateSidebarExerciseList === 'function') updateSidebarExerciseList();
+  Object.keys(imagesData).forEach(k => delete imagesData[k]);
+  Object.keys(audiosData).forEach(k => delete audiosData[k]);
+  Object.keys(videosData).forEach(k => delete videosData[k]);
+  Object.keys(recapAudiosData).forEach(k => delete recapAudiosData[k]);
+  // Reset AI seq state
+  _aiSeqVocab    = [];
+  _aiSeqOutline  = {};
+  _aiSeqContent  = {};
+  _aiSeqDocText  = '';
+  // Reset chapter meta fields
+  const titleEl = document.getElementById('chapterTitle');
+  const levelEl = document.getElementById('chapterLevel');
+  if (titleEl) titleEl.value = '';
+  if (levelEl) levelEl.value = '1';
 }
 
 function selectMode(mode) {
-  const modeSelector = document.getElementById('appModeSelector');
-  const fixedBar = document.getElementById('fixedActionBar');
-  document.getElementById('appSequenceur').style.display = 'none';
-  document.getElementById('appCartes').style.display = 'none';
   if (!mode) {
-    if (modeSelector) modeSelector.style.display = 'flex';
-    if (fixedBar) fixedBar.style.display = 'none';
-  } else {
-    if (modeSelector) modeSelector.style.display = 'none';
-    if (mode === 'sequenceur') {
-      document.getElementById('appSequenceur').style.display = 'block';
-      if (fixedBar) fixedBar.style.display = 'flex';
-    } else if (mode === 'cartes') {
-      document.getElementById('appCartes').style.display = 'block';
-      if (fixedBar) fixedBar.style.display = 'none';
-      _initCartesMode();
-    }
+    showProjectBrowser();
+    return;
   }
+  if (mode === 'sequenceur') {
+    clearSequenceur();
+    _showScreen('sequenceur');
+    _autoSaveEnabled = !!_fbProjectId;
+    _syncMetaToEditor('sequenceur');
+  } else if (mode === 'cartes') {
+    _showScreen('cartes');
+    _autoSaveEnabled = !!_fbProjectId;
+    _initCartesMode();
+    _syncMetaToEditor('cartes');
+  }
+}
+
+// Pre-fill editor title/level from _currentFileMeta, and wire up sync-back listeners
+function _syncMetaToEditor(editorType) {
+  const meta = _currentFileMeta;
+  if (!meta) return;
+
+  if (editorType === 'sequenceur') {
+    const titleEl = document.getElementById('chapterTitle');
+    const levelEl = document.getElementById('chapterLevel');
+    if (titleEl) titleEl.value = meta.name || '';
+    if (levelEl) levelEl.value = meta.level || 1;
+  } else {
+    const titleEl = document.getElementById('cartesDeckTitle');
+    const levelEl = document.getElementById('cartesDeckLevel');
+    if (titleEl) titleEl.value = meta.name || '';
+    if (levelEl) levelEl.value = meta.level || 1;
+  }
+}
+
+// Called by editor title/level inputs — keeps _currentFileMeta in sync
+function _onEditorMetaChange() {
+  if (!_currentFileMeta) return;
+  const isCartes = _currentFileMeta.type === 'flashcards';
+  const titleEl = document.getElementById(isCartes ? 'cartesDeckTitle' : 'chapterTitle');
+  const levelEl = document.getElementById(isCartes ? 'cartesDeckLevel' : 'chapterLevel');
+  if (titleEl) _currentFileMeta.name  = titleEl.value.trim() || _currentFileMeta.name;
+  if (levelEl) _currentFileMeta.level = parseInt(levelEl.value);
+  _scheduleAutoSave();
 }
 
 function _initCartesMode() {
   // Show/hide add buttons based on fixed-count mode
-  const addBtnIds = ['cartesAddBtn_courtes', 'cartesAddBtn_longues', 'cartesAddBtn_revision'];
-  addBtnIds.forEach(id => {
+  // Courtes + Longues add buttons respect fixed-count mode; Révision is always available (capped at 10)
+  ['cartesAddBtn_courtes', 'cartesAddBtn_longues'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = CARTES_FIXED_COUNT !== null ? 'none' : '';
   });
-  // Also hide the "+ Carte / + Matching" buttons in the tab headers
-  ['cartesCourteAddBtn', 'cartesLongueAddBtn', 'cartesRevisionAddBtn'].forEach(id => {
+  ['cartesCourteAddBtn', 'cartesLongueAddBtn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = CARTES_FIXED_COUNT !== null ? 'none' : '';
   });
+  // Add + Randomize for revision are always visible (not gated by section expand state)
+  const revAddBtn = document.getElementById('cartesAddBtn_revision');
+  if (revAddBtn) revAddBtn.style.display = 'block';
+  const randomizeWrapper = document.getElementById('cartesRandomizeBtnWrapper_revision');
+  if (randomizeWrapper) randomizeWrapper.style.display = 'block';
+  _updateRevisionAddBtn();
 
   if (CARTES_FIXED_COUNT === null) return;
 
@@ -456,7 +1244,7 @@ function addExercice(section) {
 
   exDiv.innerHTML = `
     <div class="d-flex justify-content-between align-items-center mb-2">
-      <h3 class="mb-0">${section} – Exercice ${sections[section].count}</h3>
+      <h3 class="mb-0">${section} – Exercice ${sections[section].count} <span id="validBadge_${id}" class="badge bg-danger ms-1" style="display:none;cursor:default;" title=""></span></h3>
       <div class="btn-group">
         <button type="button" class="btn btn-sm btn-outline-secondary" title="Monter" onclick="moveExercice('${section}', ${sections[section].count}, -1)">🔼</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" title="Descendre" onclick="moveExercice('${section}', ${sections[section].count}, 1)">🔽</button>
@@ -683,7 +1471,7 @@ function updateFields(id) {
       ${createVideoToggle(id)}
 
       <label>Affirmation</label>
-      <textarea id="enonce_${id}" maxlength="350" class="form-control mb-2"
+      <textarea id="enonce_${id}" class="form-control mb-2"
         placeholder="Écris ici l'affirmation">${devMode ? "L'adresse que vient de donner la cliente est complète." : ""}</textarea>
 
       <label>Bonne réponse</label>
@@ -716,16 +1504,14 @@ function updateFields(id) {
       <textarea id="enonce_${id}" class="form-control mb-2"
         placeholder="Écris ici la question">${devMode ? "Que devrais-tu répondre à ce client ?" : ""}</textarea>
 
-      <label>Réponses</label>
+      <label>Réponses <span class="text-muted fw-normal small">(sélectionne la bonne réponse)</span></label>
       <div class="d-flex flex-column gap-2 mb-2">
-        <input type="text" id="qcuA_${id}" class="form-control" placeholder="Bonne réponse (A)"
-          value="${devMode ? "Parlez-vous du plafond de retrait au guichet ou au distributeur ?" : ""}">
-        <input type="text" id="qcuB_${id}" class="form-control" placeholder="Distracteur (B)"
-          value="${devMode ? "Je vais vous donner les informations sur l'ouverture d'un nouveau compte d'épargne." : ""}">
-        <input type="text" id="qcuC_${id}" class="form-control" placeholder="Distracteur (C)"
-          value="${devMode ? "Pourriez-vous patienter un instant, je vais vérifier si le conseiller chargé des crédits est disponible." : ""}">
-        <input type="text" id="qcuD_${id}" class="form-control" placeholder="Distracteur (D)"
-          value="${devMode ? "Pourriez-vous m'indiquer si vous avez déjà activé votre carte bancaire ?" : ""}">
+        ${['A','B','C','D'].map(l => `
+        <div class="d-flex align-items-center gap-2">
+          <input type="radio" name="qcuCorrect_${id}" id="qcuRadio${l}_${id}" value="${l}" class="form-check-input mt-0 flex-shrink-0" ${l === 'A' ? 'checked' : ''}>
+          <input type="text" id="qcu${l}_${id}" class="form-control" placeholder="Réponse ${l}"
+            value="${devMode && l === 'A' ? "Parlez-vous du plafond de retrait au guichet ou au distributeur ?" : devMode && l === 'B' ? "Je vais vous donner les informations sur l'ouverture d'un nouveau compte d'épargne." : devMode && l === 'C' ? "Pourriez-vous patienter un instant, je vais vérifier si le conseiller chargé des crédits est disponible." : devMode && l === 'D' ? "Pourriez-vous m'indiquer si vous avez déjà activé votre carte bancaire ?" : ""}">
+        </div>`).join('')}
       </div>
 
       ${createFeedbackSelector(id, type)}
@@ -958,6 +1744,8 @@ function updateFields(id) {
   }
 
   fieldsDiv.innerHTML = html;
+  attachFieldLimits(id);
+  setTimeout(() => updateActivityWarningBadge(id), 50);
 }
 
 
@@ -995,48 +1783,48 @@ function updateMatchingFields(id) {
   if (type === "audio-audio") {
     html += `
       <p class="text-muted mb-2">Associe chaque audio de gauche à celui de droite.</p>
-      <div class="row">
-        <div class="col-md-6">
-          <h6>Colonne gauche</h6>
-          ${(() => {
-        let inputs = "";
-        for (let i = 1; i <= 4; i++) {
-          inputs += `
-                <div class="mb-2">
-                  <label>Audio L${i}</label>
-                  ${createDualAudioButtons(
-                    `audioMatchInput_${id}_L${i}`,
-                    `handleMatchAudioUpload(event, '${id}', 'L${i}')`,
-                    `openElevenLabsForMatchAudio('${id}', 'L${i}')`,
-                    `openRecorderForMatchAudio('${id}', 'L${i}')`
-                  )}
-                </div>
-              `;
-        }
-        return inputs;
-      })()}
-        </div>
-        <div class="col-md-6">
-          <h6>Colonne droite</h6>
-          ${(() => {
-        let inputs = "";
-        for (let i = 1; i <= 4; i++) {
-          inputs += `
-                <div class="mb-2">
-                  <label>Audio R${i}</label>
-                  ${createDualAudioButtons(
-                    `audioMatchInput_${id}_R${i}`,
-                    `handleMatchAudioUpload(event, '${id}', 'R${i}')`,
-                    `openElevenLabsForMatchAudio('${id}', 'R${i}')`,
-                    `openRecorderForMatchAudio('${id}', 'R${i}')`
-                  )}
-                </div>
-              `;
-        }
-        return inputs;
-      })()}
-        </div>
+      <div class="row mb-1">
+        <div class="col-6"><h6>Colonne gauche</h6></div>
+        <div class="col-6"><h6>Colonne droite</h6></div>
       </div>
+      ${(() => {
+        let rows = "";
+        for (let i = 1; i <= 4; i++) {
+          rows += `
+            <hr class="my-2">
+            <div class="row align-items-start mb-3">
+              <div class="col-6">
+                <label class="form-label mb-1">Audio L${i}</label>
+                ${createDualAudioButtons(
+                  `audioMatchInput_${id}_L${i}`,
+                  `handleMatchAudioUpload(event, '${id}', 'L${i}')`,
+                  `openElevenLabsForMatchAudio('${id}', 'L${i}')`,
+                  `openRecorderForMatchAudio('${id}', 'L${i}')`
+                )}
+                <div class="mt-2">
+                  <label class="form-label small mb-1 text-muted">Transcription de l'audio</label>
+                  <textarea id="matchTranscription_${id}_L${i}" class="form-control form-control-sm" rows="2"
+                    placeholder="Transcription du contenu audio..."></textarea>
+                </div>
+              </div>
+              <div class="col-6">
+                <label class="form-label mb-1">Audio R${i}</label>
+                ${createDualAudioButtons(
+                  `audioMatchInput_${id}_R${i}`,
+                  `handleMatchAudioUpload(event, '${id}', 'R${i}')`,
+                  `openElevenLabsForMatchAudio('${id}', 'R${i}')`,
+                  `openRecorderForMatchAudio('${id}', 'R${i}')`
+                )}
+                <div class="mt-2">
+                  <label class="form-label small mb-1 text-muted">Transcription de l'audio</label>
+                  <textarea id="matchTranscription_${id}_R${i}" class="form-control form-control-sm" rows="2"
+                    placeholder="Transcription du contenu audio..."></textarea>
+                </div>
+              </div>
+            </div>`;
+        }
+        return rows;
+      })()}
     `;
   }
 
@@ -1044,43 +1832,38 @@ function updateMatchingFields(id) {
   else if (type === "audio-texte") {
     html += `
       <p class="text-muted mb-2">Associe chaque audio à un texte correspondant.</p>
-      <div class="row">
-        <div class="col-md-6">
-          <h6>Audios</h6>
-          ${(() => {
-        let inputs = "";
-        for (let i = 1; i <= 4; i++) {
-          inputs += `
-                <div class="mb-2">
-                  <label>Audio L${i}</label>
-                  ${createDualAudioButtons(
-                    `audioMatchInput_${id}_L${i}`,
-                    `handleMatchAudioUpload(event, '${id}', 'L${i}')`,
-                    `openElevenLabsForMatchAudio('${id}', 'L${i}')`,
-                    `openRecorderForMatchAudio('${id}', 'L${i}')`
-                  )}
-                </div>
-              `;
-        }
-        return inputs;
-      })()}
-        </div>
-        <div class="col-md-6">
-          <h6>Textes</h6>
-          ${(() => {
-        let inputs = "";
-        for (let i = 1; i <= 4; i++) {
-          inputs += `
-                <div class="mb-2">
-                  <label>Texte R${i}</label>
-                  <input type="text" id="matchText_${id}_R${i}" class="form-control">
-                </div>
-              `;
-        }
-        return inputs;
-      })()}
-        </div>
+      <div class="row mb-1">
+        <div class="col-6"><h6>Audios</h6></div>
+        <div class="col-6"><h6>Textes</h6></div>
       </div>
+      ${(() => {
+        let rows = "";
+        for (let i = 1; i <= 4; i++) {
+          rows += `
+            <hr class="my-2">
+            <div class="row align-items-start mb-3">
+              <div class="col-6">
+                <label class="form-label mb-1">Audio L${i}</label>
+                ${createDualAudioButtons(
+                  `audioMatchInput_${id}_L${i}`,
+                  `handleMatchAudioUpload(event, '${id}', 'L${i}')`,
+                  `openElevenLabsForMatchAudio('${id}', 'L${i}')`,
+                  `openRecorderForMatchAudio('${id}', 'L${i}')`
+                )}
+                <div class="mt-2">
+                  <label class="form-label small mb-1 text-muted">Transcription de l'audio</label>
+                  <textarea id="matchTranscription_${id}_L${i}" class="form-control form-control-sm" rows="2"
+                    placeholder="Transcription du contenu audio..."></textarea>
+                </div>
+              </div>
+              <div class="col-6">
+                <label class="form-label mb-1">Texte R${i}</label>
+                <input type="text" id="matchText_${id}_R${i}" class="form-control">
+              </div>
+            </div>`;
+        }
+        return rows;
+      })()}
     `;
   }
 
@@ -1088,38 +1871,28 @@ function updateMatchingFields(id) {
   else if (type === "texte-texte") {
     html += `
       <p class="text-muted mb-2">Associe chaque expression de gauche à celle de droite.</p>
-      <div class="row">
-        <div class="col-md-6">
-          <h6>Colonne gauche</h6>
-          ${(() => {
-        let inputs = "";
-        for (let i = 1; i <= 4; i++) {
-          inputs += `
-                <div class="mb-2">
-                  <label>Texte L${i}</label>
-                  <input type="text" id="matchText_${id}_L${i}" class="form-control">
-                </div>
-              `;
-        }
-        return inputs;
-      })()}
-        </div>
-        <div class="col-md-6">
-          <h6>Colonne droite</h6>
-          ${(() => {
-        let inputs = "";
-        for (let i = 1; i <= 4; i++) {
-          inputs += `
-                <div class="mb-2">
-                  <label>Texte R${i}</label>
-                  <input type="text" id="matchText_${id}_R${i}" class="form-control">
-                </div>
-              `;
-        }
-        return inputs;
-      })()}
-        </div>
+      <div class="row mb-1">
+        <div class="col-6"><h6>Colonne gauche</h6></div>
+        <div class="col-6"><h6>Colonne droite</h6></div>
       </div>
+      ${(() => {
+        let rows = "";
+        for (let i = 1; i <= 4; i++) {
+          rows += `
+            <hr class="my-2">
+            <div class="row align-items-start mb-2">
+              <div class="col-6">
+                <label class="form-label mb-1">Texte L${i}</label>
+                <input type="text" id="matchText_${id}_L${i}" class="form-control">
+              </div>
+              <div class="col-6">
+                <label class="form-label mb-1">Texte R${i}</label>
+                <input type="text" id="matchText_${id}_R${i}" class="form-control">
+              </div>
+            </div>`;
+        }
+        return rows;
+      })()}
     `;
   }
 
@@ -1138,6 +1911,7 @@ function updateMatchingFields(id) {
 function handleMatchAudioUpload(event, id, keyLetter) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
 
   const [section, exNum] = id.split("_");
   const key = `${section}_EX${exNum}`;
@@ -1288,9 +2062,9 @@ function initCompleteOptionsPreview(id) {
 
     // 📏 2️⃣ Calcul de la longueur moyenne des réponses
     const moyenneLongueur = motsTrouves.length
-      ? Math.ceil(
+      ? Math.max(1, Math.ceil(
         motsTrouves.reduce((acc, m) => acc + m.length, 0) / motsTrouves.length
-      ) - 1
+      ) - 1)
       : 5; // valeur par défaut
 
     // 🧹 3️⃣ Nettoyage du texte pour la prévisualisation
@@ -1358,9 +2132,9 @@ function initCompleteReconstruitPreview(id) {
 
     // 📏 2️⃣ Calcul de la longueur moyenne des réponses
     const moyenneLongueur = motsTrouves.length
-      ? Math.ceil(
+      ? Math.max(1, Math.ceil(
         motsTrouves.reduce((acc, m) => acc + m.length, 0) / motsTrouves.length
-      ) - 1
+      ) - 1)
       : 5; // valeur par défaut
 
     // 🧹 3️⃣ Nettoyage du texte pour la prévisualisation
@@ -1545,6 +2319,7 @@ function updateFlashExtraFields(id) {
 function handleFlashcardAudioUpload(event, id, side) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
 
   const [section, exNum] = id.split("_");
   const key = `${section}_EX${exNum}`;
@@ -1792,6 +2567,7 @@ function buildLessonGrid(id) {
 function handleLessonExprAudioUpload(event, id) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
 
   const [section, exNum] = id.split("_");
   const key = `${section}_EX${exNum}`;
@@ -1816,6 +2592,7 @@ function handleLessonExprAudioUpload(event, id) {
 function handleLessonExampleAudioUpload(event, id) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
 
   const [section, exNum] = id.split("_");
   const key = `${section}_EX${exNum}`;
@@ -1840,6 +2617,7 @@ function handleLessonExampleAudioUpload(event, id) {
 function handleLessonAudioUpload(event, cellId) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
 
   // Exemples de cellId : "S1_1_LessonTable_L1_C2"
   const [section, exNum] = cellId.split("_");
@@ -2023,6 +2801,7 @@ function initSelectOptions(id) {
 function handleImageUpload(event, id) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
 
   // Use the existing cropping workflow
   openCrop(event, id);
@@ -2356,6 +3135,7 @@ function detectCacheIssue(blob) {
 function handleAudioUpload(event, id, isExemple) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
 
   const [section, exNum] = id.split("_");
   const key = `${section}_EX${exNum}`;
@@ -2448,9 +3228,10 @@ function addAudioPreviewWithDelete(targetInput, blob, previewId, deleteCallback)
           const dynamicKey = `${exoIdMatch[1]}_EX${exoIdMatch[2]}`;
           if (audiosData[dynamicKey]) {
             deleteCallback(audiosData[dynamicKey]);
-            if (Object.keys(audiosData[dynamicKey]).length === 0)
+            if (audiosData[dynamicKey] && Object.keys(audiosData[dynamicKey]).length === 0)
               delete audiosData[dynamicKey];
           }
+          updateActivityWarningBadge(`${exoIdMatch[1]}_${exoIdMatch[2]}`);
         }
       }
     };
@@ -2501,9 +3282,10 @@ function addAudioPreviewWithDelete(targetInput, blob, previewId, deleteCallback)
           const dynamicKey = `${exoIdMatch[1]}_EX${exoIdMatch[2]}`;
           if (audiosData[dynamicKey]) {
             deleteCallback(audiosData[dynamicKey]);
-            if (Object.keys(audiosData[dynamicKey]).length === 0)
+            if (audiosData[dynamicKey] && Object.keys(audiosData[dynamicKey]).length === 0)
               delete audiosData[dynamicKey];
           }
+          updateActivityWarningBadge(`${exoIdMatch[1]}_${exoIdMatch[2]}`);
         }
       }
     };
@@ -2520,6 +3302,7 @@ function addAudioPreviewWithDelete(targetInput, blob, previewId, deleteCallback)
 function handleVideoUpload(event, id) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
   openVideoCrop(file, id);
 }
 
@@ -2874,6 +3657,7 @@ function updateRecapFields(section) {
 function handleRecapAudioUpload(event, section, index) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
 
   if (!recapAudiosData[section]) recapAudiosData[section] = {};
 
@@ -3091,7 +3875,7 @@ function buildResult() {
           C: document.getElementById(`qcuC_${id}`)?.value || "",
           D: document.getElementById(`qcuD_${id}`)?.value || ""
         };
-        const bonneReponse = "A";
+        const bonneReponse = document.querySelector(`input[name="qcuCorrect_${id}"]:checked`)?.value || "A";
         const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
 
         sectionsData[s][`EX${i}`] = {
@@ -3168,10 +3952,11 @@ function buildResult() {
             ? (matchAudios[rightKey] ? `${basePath}_${rightKey}.mp3` : "")
             : document.getElementById(`matchText_${id}_R${i}`)?.value || "";
 
-          paires[`P${i}`] = {
-            [leftKey]: leftValue,
-            [rightKey]: rightValue
-          };
+          paires[`P${i}`] = { [leftKey]: leftValue, [rightKey]: rightValue };
+          if (matchType.includes("audio"))
+            paires[`P${i}`][`Transcription_L${i}`] = document.getElementById(`matchTranscription_${id}_L${i}`)?.value || "";
+          if (matchType.endsWith("audio"))
+            paires[`P${i}`][`Transcription_R${i}`] = document.getElementById(`matchTranscription_${id}_R${i}`)?.value || "";
         }
 
         sectionsData[s][`EX${i}`] = {
@@ -3579,8 +4364,9 @@ function buildSingleExerciseResult(id) {
   else if (type === "QCU") {
     const question = document.getElementById(`enonce_${id}`)?.value || "";
     const reponses = { A: document.getElementById(`qcuA_${id}`)?.value || "", B: document.getElementById(`qcuB_${id}`)?.value || "", C: document.getElementById(`qcuC_${id}`)?.value || "", D: document.getElementById(`qcuD_${id}`)?.value || "" };
+    const bonneReponseQcu = document.querySelector(`input[name="qcuCorrect_${id}"]:checked`)?.value || "A";
     const audioEnonce = audioData?.main ? `${basePath}_main.mp3` : null;
-    exData = { Type: "QCU", Consigne: consigne, Question: question, Reponses: reponses, BonneReponse: "A", Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: _buildVideoEnonce(id, videoPath), Audio_Enonce: _buildAudioEnonce(id, audioEnonce) };
+    exData = { Type: "QCU", Consigne: consigne, Question: question, Reponses: reponses, BonneReponse: bonneReponseQcu, Feedback: feedbackData, Tentatives: tentatives, Image: imagePath, Video: _buildVideoEnonce(id, videoPath), Audio_Enonce: _buildAudioEnonce(id, audioEnonce) };
   }
   else if (type === "QCM") {
     const question = document.getElementById(`enonce_${id}`)?.value || "";
@@ -3609,6 +4395,10 @@ function buildSingleExerciseResult(id) {
         ? (matchAudios[rightKey] ? `${basePath}_${rightKey}.mp3` : "")
         : document.getElementById(`matchText_${id}_R${p}`)?.value || "";
       paires[`P${p}`] = { [leftKey]: leftValue, [rightKey]: rightValue };
+      if (matchType.includes("audio"))
+        paires[`P${p}`][`Transcription_L${p}`] = document.getElementById(`matchTranscription_${id}_L${p}`)?.value || "";
+      if (matchType.endsWith("audio"))
+        paires[`P${p}`][`Transcription_R${p}`] = document.getElementById(`matchTranscription_${id}_R${p}`)?.value || "";
     }
     exData = { Type: "Matching", Consigne: matchConsigne, Feedback: feedbackData, Match_Type: matchType, Tentatives: tentatives, Audio_Enonce: _buildAudioEnonce(id, audioEnonce), Paires: paires };
   }
@@ -3795,6 +4585,17 @@ function previewDebug() {
 }
 //  GENERATION DU PAQUET  //
 async function generatePackage(templatePath = "Modele/Modele.zip") {
+  if (!_exportValidationBypassed) {
+    const _valWarnings = validateAllSequence();
+    if (_valWarnings.length > 0) {
+      showValidationWarning(_valWarnings, async () => {
+        _exportValidationBypassed = true;
+        await generatePackage(templatePath);
+      });
+      return;
+    }
+  }
+  _exportValidationBypassed = false;
   let data;
   try {
     data = buildResult();
@@ -3897,7 +4698,7 @@ async function generatePackage(templatePath = "Modele/Modele.zip") {
   }
 
   // --- Génération du ZIP final ---
-  const content = await templateZip.generateAsync({ type: "blob" });
+  const content = await templateZip.generateAsync({ type: "blob", compression: 'DEFLATE', compressionOptions: { level: 6 } });
   saveAs(content, `${safeName}.zip`);
 }
 
@@ -4021,8 +4822,8 @@ function hideImportOverlay(withSuccess) {
   _importOverlayTimer = setTimeout(_removeImportOverlay, 500);
 }
 
-async function importZipProject(event) {
-  const file = event.target.files[0];
+async function importZipProject(eventOrFile) {
+  const file = eventOrFile instanceof File ? eventOrFile : eventOrFile.target.files[0];
   if (!file) return;
 
   showImportOverlay('');
@@ -4031,14 +4832,7 @@ async function importZipProject(event) {
     const zip = await JSZip.loadAsync(file);
     //console.log("📦 Projet chargé :", file.name);
     // --- Réinitialisation des données globales ---
-    for (const s of ["S1", "S2", "S3", "S4"]) {
-      document.getElementById(`exercices_${s}`).innerHTML = "";
-      sections[s].count = 0;
-    }
-    Object.keys(imagesData).forEach(k => delete imagesData[k]);
-    Object.keys(audiosData).forEach(k => delete audiosData[k]);
-    Object.keys(videosData).forEach(k => delete videosData[k]);
-    Object.keys(recapAudiosData).forEach(k => delete recapAudiosData[k]);
+    clearSequenceur();
 
     // --- Lecture S0 ---
     const s0File = zip.file("Ressources_Sequences/S0/variables.json");
@@ -4113,6 +4907,10 @@ async function importZipProject(event) {
             if (exoData.Reponses) {
               for (const [letter, val] of Object.entries(exoData.Reponses))
                 safeSet(`qcu${letter}_${id}`, val);
+            }
+            if (exoData.BonneReponse) {
+              const radio = document.getElementById(`qcuRadio${exoData.BonneReponse}_${id}`);
+              if (radio) radio.checked = true;
             }
             break;
 
@@ -4293,18 +5091,16 @@ async function importZipProject(event) {
 
                   else if (matchType === "audio-texte") {
                     const rightInput = document.getElementById(`matchText_${id}_R${index}`);
-                    if (rightInput) {
-                      rightInput.value = rightVal;
-                      console.log(`✅ [${id}] Texte (droite) injecté pour paire ${index}`);
-                    } else {
-                      console.warn(`⚠️ [${id}] Champ texte droit introuvable pour paire ${index}`);
-                    }
-                    // les audios gauches seront traités dans la section "📁 MÉDIAS"
+                    if (rightInput) rightInput.value = rightVal;
+                    const transL = document.getElementById(`matchTranscription_${id}_L${index}`);
+                    if (transL && pair[`Transcription_L${index}`]) transL.value = pair[`Transcription_L${index}`];
                   }
 
                   else if (matchType === "audio-audio") {
-                    console.log(`🎧 [${id}] Appariement audio détecté pour la paire ${index}`);
-                    // rien à injecter ici (audios uniquement)
+                    const transL = document.getElementById(`matchTranscription_${id}_L${index}`);
+                    if (transL && pair[`Transcription_L${index}`]) transL.value = pair[`Transcription_L${index}`];
+                    const transR = document.getElementById(`matchTranscription_${id}_R${index}`);
+                    if (transR && pair[`Transcription_R${index}`]) transR.value = pair[`Transcription_R${index}`];
                   }
                 });
               });
@@ -4921,6 +5717,7 @@ async function importZipProject(event) {
     }
 
     //console.timeEnd("⏱️ Import total");
+    updateSidebarExerciseList();
     hideImportOverlay(true);
   } catch (err) {
     console.error("Erreur d’import :", err);
@@ -5007,6 +5804,7 @@ function toggleImageField(id) {
       }
     }
   }
+  updateActivityWarningBadge(id);
 }
 // Génère le toggle des audios
 function createAudioToggle(id) {
@@ -5091,6 +5889,7 @@ function toggleAudioField(id) {
       }
     }
   }
+  updateActivityWarningBadge(id);
 }
 
 // Génère le toggle vidéo
@@ -5153,6 +5952,7 @@ function toggleVideoField(id) {
       }
     }
   }
+  updateActivityWarningBadge(id);
 }
 
 /*  ======  Gestion des feedbacks  ======  */
@@ -5405,6 +6205,7 @@ async function translateLessonExample(id) {
 function handleFeedbackAudioUpload(event, id) {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
 
   const [section, exNum] = id.split("_");
   const key = `${section}_EX${exNum}`; // ✅ On garde la clé standard
@@ -6288,6 +7089,7 @@ function openRecorderForAudio(id, audioType = 'main') {
 }
 
 function openRecorderForMatchAudio(id, position) {
+  const refText = document.getElementById(`matchTranscription_${id}_${position}`)?.value?.trim() || '';
   const [section, exNum] = id.split("_");
   const audioKey = `${section}_EX${exNum}`;
   openRecorderModal((blob) => {
@@ -6302,7 +7104,7 @@ function openRecorderForMatchAudio(id, position) {
         if (Object.keys(data).length === 0) delete audiosData[audioKey];
       });
     }
-  });
+  }, refText);
 }
 
 function openRecorderForFlashcardAudio(id, side) {
@@ -6851,20 +7653,21 @@ async function previewWithLocalServer() {
   //  Get elements
   const loadingDiv = document.getElementById('scormLoading');
   const iframe = document.getElementById('scormPlayerFrame');
-  //  Make sure loading is visible and iframe is hidden
+  //  Make sure loading overlay is visible; keep iframe visible so browser renders it underneath
   if (loadingDiv) {
     loadingDiv.style.cssText = 'display: flex !important;';
   }
   if (iframe) {
-    iframe.style.display = 'none';
-  }  
+    iframe.style.display = 'block';
+    iframe.src = 'about:blank';
+  }
   try {
     //  Step 1: Generate SCORM package
     updateLoadingStatus('Génération du package SCORM...', 20);
     const zipObject = await generateSCORMPackageInMemory();    
     //  Step 2: Generate blob
     updateLoadingStatus('Préparation du fichier...', 40);
-    const zipBlob = await zipObject.generateAsync({ type: 'blob' });    
+    const zipBlob = await zipObject.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     //  Step 3: Upload to server
     updateLoadingStatus('Upload vers le serveur...', 60);
     const response = await fetch(`${SERVER_URL}/upload`, {
@@ -6886,26 +7689,25 @@ async function previewWithLocalServer() {
     currentPackageId = result.packageId;
     //  Step 4: Load in iframe
     updateLoadingStatus('Chargement du contenu...', 90);
-    //  Function to hide loading and show iframe
+    //  Function to hide loading overlay (iframe is already visible)
+    let contentShown = false;
     const showContent = () => {
-      console.log('🎉 Showing content...');
+      if (contentShown) return;
+      contentShown = true;
       if (loadingDiv) {
         loadingDiv.style.cssText = 'display: none !important;';
       }
-      if (iframe) {
-        iframe.style.display = 'block';
-      }
     };
-    //  Wait for iframe to load
+    //  Wait for iframe to load the actual content (ignore the about:blank navigation)
     iframe.onload = function() {
-      console.log('✅ Iframe loaded successfully');
-      showContent();
+      if (iframe.src && iframe.src !== 'about:blank') {
+        showContent();
+      }
     };
     //  Backup timeout
     setTimeout(() => {
-      console.log('⏰ Timeout reached, hiding loading screen');
       showContent();
-    }, 2000);
+    }, 4000);
     //  Load the URL
     iframe.src = result.launchUrl;
     console.log('✅ Preview initiated successfully!');
@@ -7034,6 +7836,19 @@ async function generateSCORMPackageInMemory(templatePath = "Modele/Modele.zip") 
     }
   }
 
+  // --- Save AI generation brief (vocab + outline) if available ---
+  if (_aiSeqVocab?.length || Object.keys(_aiSeqOutline||{}).length) {
+    const brief = {
+      theme:      document.getElementById('seqAiTheme')?.value?.trim() || '',
+      niveau:     document.getElementById('seqAiNiveau')?.value || '',
+      contraintes: document.getElementById('seqAiContraintes')?.value?.trim() || '',
+      vocabulary: _aiSeqVocab,
+      outline:    _aiSeqOutline,
+      savedAt:    new Date().toISOString(),
+    };
+    templateZip.file('Ressources_Sequences/brief.json', JSON.stringify(brief, null, 2));
+  }
+
   // --- Return the JSZip object (not the Blob) ---
   return templateZip;
 }
@@ -7136,7 +7951,7 @@ async function quickPreview(id) {
   try {
     // Generate and upload
     const zipObject = await generateQuickPreviewPackage(id);
-    const zipBlob = await zipObject.generateAsync({ type: 'blob' });
+    const zipBlob = await zipObject.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     const response = await fetch(`${SERVER_URL}/upload`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/zip' },
@@ -7219,12 +8034,12 @@ document.addEventListener('DOMContentLoaded', function() {
   // 1. Cleanup on modal close (normal usage)
   if (modal) {
     modal.addEventListener('hidden.bs.modal', function () {
-      console.log('🔒 Modal closed, cleaning up...');
       deleteCurrentPackage();
-      // Clear iframe
       const iframe = document.getElementById('scormPlayerFrame');
       if (iframe) {
-        iframe.src = '';
+        iframe.onload = null;
+        iframe.src = 'about:blank';
+        iframe.style.display = 'none';
       }
     });
   }
@@ -7431,7 +8246,8 @@ function updateSidebarExerciseList() {
           <strong>Exercice ${exerciseNum}</strong>
           <span class="exercise-type">(${activityType})</span>
         </span>
-        <button class="btn btn-sm btn-outline-danger delete-exercise" 
+        <span id="sidebarValidBadge_${exerciseId}" class="badge bg-danger me-1" style="display:none;" title=""></span>
+        <button class="btn btn-sm btn-outline-danger delete-exercise"
                 onclick="deleteExerciseFromSidebar('${section}', ${exerciseNum}); event.stopPropagation();">
           <i class="bi bi-trash"></i>
         </button>
@@ -7454,6 +8270,16 @@ function updateSidebarExerciseList() {
   initializeSortable();
   // Update active states
   updateSidebarState();
+  // Sync validation badges
+  if (typeof updateActivityWarningBadge === 'function') {
+    ['S1','S2','S3','S4'].forEach(s => {
+      const container = document.getElementById(`exercices_${s}`);
+      if (!container) return;
+      Array.from(container.children).forEach((_, i) => {
+        updateActivityWarningBadge(`${s}_${i + 1}`);
+      });
+    });
+  }
 }
 
 //  ======  Gestion du drag and drop des exercices
@@ -7610,26 +8436,16 @@ addExercice = function(section) {
 
 //  ======  Création d'un menu mobile (❓❓❓)
 function createMobileMenu() {
-  // Check if already exists
-  if (document.querySelector('.mobile-menu-toggle')) return;
-  // Create button
-  const button = document.createElement('button');
-  button.className = 'mobile-menu-toggle d-md-none';
-  button.innerHTML = '<i class="bi bi-list"></i>';
-  button.onclick = toggleMobileSidebar;
-  document.body.appendChild(button);
-  // Create overlay
-  const overlay = document.createElement('div');
-  overlay.className = 'sidebar-overlay';
-  overlay.onclick = toggleMobileSidebar;
-  document.body.appendChild(overlay);
+  // Button and overlay are now static HTML — nothing to create
 }
 function toggleMobileSidebar() {
-  const sidebar = document.querySelector('.sidebar-nav');
-  const overlay = document.querySelector('.sidebar-overlay');
+  // Target the sequenceur sidebar specifically
+  const sidebar = document.querySelector('#appSequenceur .sidebar-nav');
+  const overlay = document.getElementById('seqSidebarOverlay');
+  const isOpen  = sidebar?.classList.contains('show');
 
-  if (sidebar) sidebar.classList.toggle('show');
-  if (overlay) overlay.classList.toggle('show');
+  if (sidebar) sidebar.classList.toggle('show', !isOpen);
+  if (overlay) overlay.classList.toggle('show', !isOpen);
 }
 
 
@@ -8051,19 +8867,33 @@ function aiPopulateCards() {
     updateCarteNavLabel('longues', id);
   });
 
-  // Populate Révision: each matching pairs the Courte expression with its Longue sentence
-  courteCards.slice(0, 10).forEach((card, i) => {
+  // Populate Révision: greedy usage-balanced matchings (same logic as randomizeCarteRevision)
+  const revisionCount = Math.min(CARTES_REVISION_MAX, Math.max(1, parseInt(document.getElementById('aiGenRevisionCount')?.value) || 10));
+  const stableIds = courteCards.map(c => parseInt(c.id.replace('carteCourte_', '')));
+  const pairsPerMatch = Math.min(4, stableIds.length);
+  const usageCount = new Map(stableIds.map(id => [id, 0]));
+  for (let i = 0; i < revisionCount; i++) {
+    const sorted = [...stableIds].sort((a, b) => {
+      const diff = usageCount.get(a) - usageCount.get(b);
+      return diff !== 0 ? diff : Math.random() - 0.5;
+    });
+    const pick = sorted.slice(0, pairsPerMatch);
+    for (let j = pick.length - 1; j > 0; j--) {
+      const k = Math.floor(Math.random() * (j + 1));
+      [pick[j], pick[k]] = [pick[k], pick[j]];
+    }
+    pick.forEach(id => usageCount.set(id, usageCount.get(id) + 1));
     addCarteRevision();
     const id = cartesRevisionIdCounter;
-    const courteStableId = parseInt(card.id.replace('carteCourte_', ''));
-    const p1El = document.getElementById(`carteRevisionPaire1_${id}`);
-    const p2El = document.getElementById(`carteRevisionPaire2_${id}`);
-    if (p1El) p1El.value = courteStableId;
-    if (p2El) p2El.value = courteStableId;
+    for (let p = 1; p <= pairsPerMatch; p++) {
+      const pEl = document.getElementById(`carteRevisionPaire${p}_${id}`);
+      if (pEl) pEl.value = pick[p - 1];
+    }
     if (typeof updateCarteRevisionInfo === 'function') updateCarteRevisionInfo(id);
-  });
+  }
 
   ['courtes', 'longues', 'revision'].forEach(s => rebuildCartesNavList(s));
+  _updateRevisionAddBtn();
 
   showCartesTab('courtes');
   const first = document.querySelector('#carteCourtesList [id^="carteCourte_"]');
@@ -8437,9 +9267,71 @@ function refreshCarteLonguesFrontAudioInfo() {
 }
 
 // ── Révision ──────────────────────────────────────────────────
+function randomizeCarteRevision() {
+  const courteCards = [...document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]')];
+  if (courteCards.length === 0) { alert('Ajoutez d\'abord des Flashcards Courtes.'); return; }
+
+  // Clear existing revision cards
+  const list = document.getElementById('carteRevisionList');
+  if (list) list.innerHTML = '';
+  cartesRevisionIdCounter = 0;
+
+  const stableIds = courteCards.map(c => parseInt(c.id.replace('carteCourte_', '')));
+  const count = Math.min(CARTES_REVISION_MAX, Math.max(1, parseInt(document.getElementById('cartesRandomizeCount_revision')?.value) || 10));
+  const numCards = stableIds.length;
+  const pairsPerMatch = Math.min(4, numCards);
+
+  // Greedy usage-balanced assignment: for each matching, pick the 4 least-used cards.
+  // Within a tie in usage, order is randomised — guarantees no within-matching duplicates
+  // and ensures every card appears at least once when count * pairsPerMatch >= numCards.
+  const usageCount = new Map(stableIds.map(id => [id, 0]));
+
+  for (let i = 0; i < count; i++) {
+    // Sort by usage (ascending), break ties randomly, pick first pairsPerMatch
+    const sorted = [...stableIds].sort((a, b) => {
+      const diff = usageCount.get(a) - usageCount.get(b);
+      return diff !== 0 ? diff : Math.random() - 0.5;
+    });
+    const pick = sorted.slice(0, pairsPerMatch);
+    // Shuffle the pick so pair order varies
+    for (let j = pick.length - 1; j > 0; j--) {
+      const k = Math.floor(Math.random() * (j + 1));
+      [pick[j], pick[k]] = [pick[k], pick[j]];
+    }
+    pick.forEach(id => usageCount.set(id, usageCount.get(id) + 1));
+
+    addCarteRevision();
+    const id = cartesRevisionIdCounter;
+    for (let p = 1; p <= pairsPerMatch; p++) {
+      const pEl = document.getElementById(`carteRevisionPaire${p}_${id}`);
+      if (pEl) pEl.value = pick[p - 1];
+    }
+    updateCarteRevisionInfo(id);
+  }
+
+  rebuildCartesNavList('revision');
+  _updateRevisionAddBtn();
+  showCartesTab('revision');
+  const first = document.querySelector('#carteRevisionList [id^="carteRevision_"]');
+  if (first) showCarteCard('revision', parseInt(first.id.replace('carteRevision_', '')));
+}
+
+const CARTES_REVISION_MAX = 10;
+
+function _updateRevisionAddBtn() {
+  const count = document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]').length;
+  const atMax = count >= CARTES_REVISION_MAX;
+  ['cartesAddBtn_revision'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.disabled = atMax;
+      el.title = atMax ? `Maximum ${CARTES_REVISION_MAX} matchings` : '';
+    }
+  });
+}
+
 function addCarteRevision() {
-  if (CARTES_FIXED_COUNT !== null &&
-      document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]').length >= CARTES_FIXED_COUNT) return;
+  if (document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]').length >= CARTES_REVISION_MAX) return;
   cartesRevisionIdCounter++;
   const id = cartesRevisionIdCounter;
   const list = document.getElementById('carteRevisionList');
@@ -8447,9 +9339,9 @@ function addCarteRevision() {
   div.id = `carteRevision_${id}`;
   div.className = 'card mb-3';
   div.innerHTML = `
-    <div class="card-header d-flex justify-content-between align-items-center py-2">
-      <strong class="carte-number">Matching ?</strong>
-      ${CARTES_FIXED_COUNT === null ? `<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCarteRevision(${id})">&#10060;</button>` : ''}
+    <div class="card-header py-2">
+      <strong class="carte-number d-block">Matching ?</strong>
+      <div class="carte-pairs-subtitle small text-muted"></div>
     </div>
     <div class="card-body">
       <div class="mb-2">
@@ -8458,22 +9350,15 @@ function addCarteRevision() {
           value="Associez chaque expression &#224; sa d&#233;finition">
       </div>
       <div class="row g-2">
+        ${[1,2,3,4].map(p => `
         <div class="col-md-6">
-          <label class="form-label small fw-bold">Paire 1</label>
-          <select id="carteRevisionPaire1_${id}" class="form-select form-select-sm mb-1"
+          <label class="form-label small fw-bold">Paire ${p}</label>
+          <select id="carteRevisionPaire${p}_${id}" class="form-select form-select-sm mb-1"
             onchange="updateCarteRevisionInfo(${id})">
-            <option value="">&#8212; Expression 1 &#8212;</option>
+            <option value="">&#8212; Expression ${p} &#8212;</option>
           </select>
-          <div id="carteRevisionInfo1_${id}" class="small text-muted"></div>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label small fw-bold">Paire 2</label>
-          <select id="carteRevisionPaire2_${id}" class="form-select form-select-sm mb-1"
-            onchange="updateCarteRevisionInfo(${id})">
-            <option value="">&#8212; Expression 2 &#8212;</option>
-          </select>
-          <div id="carteRevisionInfo2_${id}" class="small text-muted"></div>
-        </div>
+          <div id="carteRevisionInfo${p}_${id}" class="small text-muted"></div>
+        </div>`).join('')}
       </div>
     </div>`;
   div.style.display = 'none';
@@ -8483,10 +9368,10 @@ function addCarteRevision() {
   rebuildCartesNavList('revision');
   autoExpandCartesSection('revision');
   showCarteCard('revision', id);
+  _updateRevisionAddBtn();
 }
 
 function removeCarteRevision(id) {
-  if (CARTES_FIXED_COUNT !== null) return;
   const list = document.getElementById('carteRevisionList');
   const card = document.getElementById(`carteRevision_${id}`);
   let nextId = null;
@@ -8498,17 +9383,29 @@ function removeCarteRevision(id) {
   updateCarteRevisionNumbers();
   rebuildCartesNavList('revision');
   showCarteCard('revision', nextId);
+  _updateRevisionAddBtn();
 }
 
 function updateCarteRevisionNumbers() {
+  const courteCards = [...document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]')];
+  const posOf = stableId => {
+    const idx = courteCards.findIndex(c => parseInt(c.id.replace('carteCourte_', '')) === stableId);
+    return idx === -1 ? '?' : idx + 1;
+  };
   document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]').forEach((card, idx) => {
+    const id = parseInt(card.id.replace('carteRevision_', ''));
     const num = card.querySelector('.carte-number');
     if (num) num.textContent = `Matching ${idx + 1}`;
+    const subtitle = card.querySelector('.carte-pairs-subtitle');
+    if (subtitle) {
+      const refs = [1,2,3,4].map(p => parseInt(document.getElementById(`carteRevisionPaire${p}_${id}`)?.value) || 0);
+      subtitle.textContent = refs.some(Boolean) ? refs.map(r => r ? posOf(r) : '?').join(' / ') : '';
+    }
   });
 }
 
 function updateCarteRevisionInfo(id) {
-  [1, 2].forEach(p => {
+  [1, 2, 3, 4].forEach(p => {
     const select = document.getElementById(`carteRevisionPaire${p}_${id}`);
     const info = document.getElementById(`carteRevisionInfo${p}_${id}`);
     if (!select || !info) return;
@@ -8522,6 +9419,7 @@ function updateCarteRevisionInfo(id) {
       Expr: ${hasExpr ? '<span class="text-success">&#10003;</span>' : '<span class="text-danger">&#10007;</span>'}
       D&#233;f: ${hasDef ? '<span class="text-success">&#10003;</span>' : '<span class="text-danger">&#10007;</span>'}`;
   });
+  updateCarteRevisionNumbers();
   rebuildCartesNavList('revision');
 }
 
@@ -8554,7 +9452,7 @@ function refreshCarteLongueSelects(id) {
 }
 
 function refreshCarteRevisionSelects(id) {
-  [1, 2].forEach(p => {
+  [1, 2, 3, 4].forEach(p => {
     const select = document.getElementById(`carteRevisionPaire${p}_${id}`);
     if (!select) return;
     const cur = select.value;
@@ -8651,35 +9549,24 @@ async function _buildCartesZip() {
   revisionCards.forEach((card, idx) => {
     const rId = parseInt(card.id.replace('carteRevision_', ''));
     const pos = idx + 1;
-    const ref1 = parseInt(document.getElementById(`carteRevisionPaire1_${rId}`)?.value);
-    const ref2 = parseInt(document.getElementById(`carteRevisionPaire2_${rId}`)?.value);
-    const pos1 = stableToPos[ref1] || 0;
-    const pos2 = stableToPos[ref2] || 0;
-    const { pos: lPos1 } = _findLinkedLongue(ref1);
-    const { pos: lPos2 } = _findLinkedLongue(ref2);
-    revisionJSON[`Matching${pos}`] = {
-      Consigne: document.getElementById(`carteRevisionConsigne_${rId}`)?.value || '',
-      Paire_1: {
+    const refs = [1,2,3,4].map(p => parseInt(document.getElementById(`carteRevisionPaire${p}_${rId}`)?.value) || 0);
+    const matchingEntry = { Consigne: document.getElementById(`carteRevisionConsigne_${rId}`)?.value || '' };
+    refs.forEach((ref, i) => {
+      const pNum = i + 1;
+      const courtePos = stableToPos[ref] || 0;
+      const { pos: longuePos } = _findLinkedLongue(ref);
+      matchingEntry[`Paire_${pNum}`] = {
         Audio_Definition: {
-          fichier: lPos1 ? `Ressources_FCs/Audios/LonguesDef/FC_${lPos1}.mp3` : '',
-          transcription: _findLongueBackText(ref1)
+          fichier: longuePos ? `Ressources_FCs/Audios/LonguesDef/FC_${longuePos}.mp3` : '',
+          transcription: _findLongueBackText(ref)
         },
         Audio_Expression: {
-          fichier: pos1 ? `Ressources_FCs/Audios/Expressions/FC_${pos1}.mp3` : '',
-          transcription: ref1 ? (document.getElementById(`carteCourteBack_${ref1}`)?.value || '') : ''
+          fichier: courtePos ? `Ressources_FCs/Audios/Expressions/FC_${courtePos}.mp3` : '',
+          transcription: ref ? (document.getElementById(`carteCourteBack_${ref}`)?.value || '') : ''
         }
-      },
-      Paire_2: {
-        Audio_Definition: {
-          fichier: lPos2 ? `Ressources_FCs/Audios/LonguesDef/FC_${lPos2}.mp3` : '',
-          transcription: _findLongueBackText(ref2)
-        },
-        Audio_Expression: {
-          fichier: pos2 ? `Ressources_FCs/Audios/Expressions/FC_${pos2}.mp3` : '',
-          transcription: ref2 ? (document.getElementById(`carteCourteBack_${ref2}`)?.value || '') : ''
-        }
-      }
-    };
+      };
+    });
+    revisionJSON[`Matching${pos}`] = matchingEntry;
   });
   zip.file('Ressources_FCs/Flashcards_Revision/variables.json', JSON.stringify(revisionJSON, null, 2));
 
@@ -8696,6 +9583,9 @@ async function _buildCartesZip() {
       '5zgnc47DEJA.jpg','6CV1mLuHSdn.jpg','6LXazCjYi03.jpg','6cy2aWU9b9p.jpg',
       '6g5yBoSmkqY.jpg','6qWyu3z3UaV.jpg'
     ];
+    const menuImgs = [
+      '5qseK2Xx60Q.jpg','5s9CGsabfd5.jpg','68tnsAkQgog.jpg'
+    ];
     const replaceImages = async (subFolder, filenames) => {
       for (const name of filenames) {
         const r = await fetch(`${themePath}/${subFolder}/${name}`);
@@ -8707,6 +9597,7 @@ async function _buildCartesZip() {
     };
     await replaceImages('Flashcards_Courtes', courteImgs);
     await replaceImages('Flashcards_Longues', longueImgs);
+    await replaceImages('Flashcards_Menu', menuImgs);
   }
 
   return zip;
@@ -8716,7 +9607,7 @@ async function _buildCartesZip() {
 async function exportCartes() {
   try {
     const zip = await _buildCartesZip();
-    const blob = await zip.generateAsync({ type: 'blob' });
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     const title = document.getElementById('cartesDeckTitle')?.value?.trim();
     const filename = title ? `${title}.zip` : 'Modele_Flashcards.zip';
     const a = document.createElement('a');
@@ -8726,6 +9617,132 @@ async function exportCartes() {
   } catch (e) {
     alert(e.message);
   }
+}
+
+// ── Debug JSON ────────────────────────────────────────────────
+async function debugCartes() {
+  let sections;
+  try {
+    sections = _buildCartesDebugJSON();
+  } catch (e) {
+    alert('Erreur lors de la génération du JSON : ' + e.message);
+    return;
+  }
+
+  const tabsEl = document.getElementById('cartesDebugTabs');
+  const contentEl = document.getElementById('cartesDebugContent');
+  tabsEl.innerHTML = '';
+  contentEl.innerHTML = '';
+
+  const keys = Object.keys(sections);
+  keys.forEach((key, i) => {
+    const btnId = `cartesDebugTab_${i}`;
+    const preId = `cartesDebugPre_${i}`;
+    const btn = document.createElement('button');
+    btn.id = btnId;
+    btn.className = 'btn btn-sm me-1 mb-2 ' + (i === 0 ? 'btn-primary' : 'btn-outline-secondary');
+    btn.textContent = key;
+    btn.onclick = () => {
+      tabsEl.querySelectorAll('button').forEach(b => b.className = b.className.replace('btn-primary', 'btn-outline-secondary'));
+      btn.className = btn.className.replace('btn-outline-secondary', 'btn-primary');
+      contentEl.querySelectorAll('pre').forEach(p => p.style.display = 'none');
+      document.getElementById(preId).style.display = 'block';
+    };
+    tabsEl.appendChild(btn);
+
+    const pre = document.createElement('pre');
+    pre.id = preId;
+    pre.style.cssText = 'background:#f8f9fa;border-radius:6px;padding:1rem;font-size:.8rem;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-word;' + (i === 0 ? '' : 'display:none;');
+    pre.textContent = JSON.stringify(sections[key], null, 2);
+    contentEl.appendChild(pre);
+  });
+
+  new bootstrap.Modal(document.getElementById('cartesDebugModal')).show();
+}
+
+function _buildCartesDebugJSON() {
+  // Reuse the same logic as _buildCartesZip but return plain objects instead
+  const stableToPos = {};
+  const courteCards = [...document.querySelectorAll('#carteCourteList [id^="carteCourte_"]')];
+  courteCards.forEach((card, idx) => {
+    const cId = parseInt(card.id.replace('carteCourte_', ''));
+    stableToPos[cId] = idx + 1;
+  });
+
+  // Courtes
+  const courtesJSON = {};
+  courteCards.forEach((card, idx) => {
+    const cId = parseInt(card.id.replace('carteCourte_', ''));
+    const pos = idx + 1;
+    courtesJSON[`Card${pos}`] = {
+      Front_Text:  document.getElementById(`carteCourteFront_${cId}`)?.value || '',
+      Front_Audio: cartesAudioBlobs.courtes[cId] ? `Ressources_FCs/Audios/Expressions/FC_${pos}.mp3` : '',
+      Back_Text:   document.getElementById(`carteCourteBack_${cId}`)?.value || '',
+      Extra: buildCarteExtraData(`C${cId}`)
+    };
+  });
+
+  // Longues
+  const longuesJSON = {};
+  const longueCards = [...document.querySelectorAll('#carteLongueList [id^="carteLongue_"]')];
+  longueCards.forEach((card, idx) => {
+    const lId = parseInt(card.id.replace('carteLongue_', ''));
+    const pos = idx + 1;
+    longuesJSON[`Card${pos}`] = {
+      Consigne:    document.getElementById(`carteLongueConsigne_${lId}`)?.value || '',
+      Front_Text:  document.getElementById(`carteLongueFrontText_${lId}`)?.value || '',
+      Front_Audio: cartesAudioBlobs.longuesFront[lId] ? `Ressources_FCs/Audios/LonguesFront/FC_${pos}.mp3` : '',
+      Back_Text:   document.getElementById(`carteLongueBack_${lId}`)?.value || '',
+      Back_Audio:  cartesAudioBlobs.longuesDef[lId] ? `Ressources_FCs/Audios/LonguesDef/FC_${pos}.mp3` : '',
+      Courte_Ref:  parseInt(document.getElementById(`carteLongueFrontRef_${lId}`)?.value) || '',
+      Extra: buildCarteExtraData(`L${lId}`)
+    };
+  });
+
+  // Révision
+  const revisionJSON = {};
+  const revisionCards = [...document.querySelectorAll('#carteRevisionList [id^="carteRevision_"]')];
+  revisionCards.forEach((card, idx) => {
+    const rId = parseInt(card.id.replace('carteRevision_', ''));
+    const pos = idx + 1;
+    const refs = [1,2,3,4].map(p => parseInt(document.getElementById(`carteRevisionPaire${p}_${rId}`)?.value) || 0);
+    const matchingEntry = { Consigne: document.getElementById(`carteRevisionConsigne_${rId}`)?.value || '' };
+    refs.forEach((ref, i) => {
+      const pNum = i + 1;
+      const courtePos = stableToPos[ref] || 0;
+      const { pos: longuePos } = _findLinkedLongue(ref);
+      matchingEntry[`Paire_${pNum}`] = {
+        Audio_Definition: {
+          fichier: longuePos ? `Ressources_FCs/Audios/LonguesDef/FC_${longuePos}.mp3` : '',
+          transcription: _findLongueBackText(ref)
+        },
+        Audio_Expression: {
+          fichier: courtePos ? `Ressources_FCs/Audios/Expressions/FC_${courtePos}.mp3` : '',
+          transcription: ref ? (document.getElementById(`carteCourteBack_${ref}`)?.value || '') : ''
+        }
+      };
+    });
+    revisionJSON[`Matching${pos}`] = matchingEntry;
+  });
+
+  return {
+    'Flashcards_Courtes': courtesJSON,
+    'Flashcards_Longues': longuesJSON,
+    'Flashcards_Revision': revisionJSON
+  };
+}
+
+let _cartesDebugAllData = null;
+function cartesDebugCopyAll() {
+  const contentEl = document.getElementById('cartesDebugContent');
+  const pres = [...contentEl.querySelectorAll('pre')];
+  const text = pres.map(p => p.textContent).join('\n\n---\n\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('#cartesDebugModal .modal-footer .btn-outline-primary');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check me-1"></i> Copié !';
+    setTimeout(() => { btn.innerHTML = orig; }, 1500);
+  });
 }
 
 // ── Preview ───────────────────────────────────────────────────
@@ -8741,7 +9758,7 @@ async function previewCartes() {
     updateLoadingStatus('Génération du package Flashcards...', 20);
     const zipObject = await _buildCartesZip();
     updateLoadingStatus('Préparation du fichier...', 40);
-    const zipBlob = await zipObject.generateAsync({ type: 'blob' });
+    const zipBlob = await zipObject.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     updateLoadingStatus('Upload vers le serveur...', 60);
     const response = await fetch(`${SERVER_URL}/upload`, {
       method: 'POST',
@@ -8798,8 +9815,8 @@ function _findLongueBackText(courtesStableId) {
 }
 
 // ── Import ────────────────────────────────────────────────────
-async function importCartes(event) {
-  const file = event.target.files[0];
+async function importCartes(eventOrFile) {
+  const file = eventOrFile instanceof File ? eventOrFile : eventOrFile.target.files[0];
   if (!file) return;
 
   showImportOverlay();
@@ -8943,10 +9960,10 @@ async function importCartes(event) {
         const id = cartesRevisionIdCounter;
         const m = revisionJSON[`Matching${n}`];
         document.getElementById(`carteRevisionConsigne_${id}`).value = m.Consigne || '';
-        const ref1 = m.Paire_1?.Audio_Expression?.fichier ? exprPathToId[m.Paire_1.Audio_Expression.fichier] : null;
-        const ref2 = m.Paire_2?.Audio_Expression?.fichier ? exprPathToId[m.Paire_2.Audio_Expression.fichier] : null;
-        if (ref1) { document.getElementById(`carteRevisionPaire1_${id}`).value = ref1; }
-        if (ref2) { document.getElementById(`carteRevisionPaire2_${id}`).value = ref2; }
+        [1,2,3,4].forEach(p => {
+          const ref = m[`Paire_${p}`]?.Audio_Expression?.fichier ? exprPathToId[m[`Paire_${p}`].Audio_Expression.fichier] : null;
+          if (ref) document.getElementById(`carteRevisionPaire${p}_${id}`).value = ref;
+        });
         updateCarteRevisionInfo(id);
         n++;
       }
@@ -9002,16 +10019,24 @@ function toggleCartesSection(section) {
   const header = document.getElementById(`cartesSideBtn_${section}`);
   const list = document.getElementById(`cartesNavList_${section}`);
   const addBtn = document.getElementById(`cartesAddBtn_${section}`);
+  const randomizeWrapper = document.getElementById(`cartesRandomizeBtnWrapper_${section}`);
   if (!header || !list) return;
   const isExpanded = header.classList.contains('expanded');
   if (isExpanded) {
     header.classList.remove('expanded');
     list.style.display = 'none';
-    if (addBtn) addBtn.style.display = 'none';
+    if (section !== 'revision') {
+      if (addBtn) addBtn.style.display = 'none';
+    }
+    if (section !== 'revision' && randomizeWrapper) randomizeWrapper.style.display = 'none';
   } else {
     header.classList.add('expanded');
     list.style.display = 'block';
-    if (addBtn) addBtn.style.display = 'block';
+    if (section === 'revision') {
+      _updateRevisionAddBtn();
+    } else {
+      if (addBtn) addBtn.style.display = CARTES_FIXED_COUNT !== null ? 'none' : 'block';
+    }
   }
 }
 
@@ -9031,10 +10056,9 @@ function rebuildCartesNavList(section) {
         const idx = courtes.findIndex(c => parseInt(c.id.replace('carteCourte_', '')) === stableId);
         return idx === -1 ? '?' : idx + 1;
       };
-      const ref1 = parseInt(document.getElementById(`carteRevisionPaire1_${id}`)?.value);
-      const ref2 = parseInt(document.getElementById(`carteRevisionPaire2_${id}`)?.value);
-      if (!ref1 && !ref2) return '';
-      return `${ref1 ? posOf(ref1) : '?'} / ${ref2 ? posOf(ref2) : '?'}`;
+      const refs = [1,2,3,4].map(p => parseInt(document.getElementById(`carteRevisionPaire${p}_${id}`)?.value) || 0);
+      if (!refs.some(Boolean)) return '';
+      return refs.map(r => r ? posOf(r) : '?').join(' / ');
     }}
   };
   const cfg = cfgMap[section];
@@ -9057,12 +10081,16 @@ function rebuildCartesNavList(section) {
     li.dataset.section = section;
     if (stableId === activeSId) li.classList.add('active');
     li.draggable = true;
+    const deleteBtn = section === 'revision'
+      ? `<button class="btn btn-sm text-danger p-0 ms-1 border-0 bg-transparent" title="Supprimer" onclick="event.stopPropagation();removeCarteRevision(${stableId});" style="line-height:1;"><i class="bi bi-trash3"></i></button>`
+      : '';
     li.innerHTML =
       `<i class="bi bi-grip-vertical drag-handle"></i>` +
       `<span class="flex-grow-1" onclick="showCartesTab('${section}'); showCarteCard('${section}',${stableId});" style="cursor:pointer;">` +
         `<strong>${cfg.label} ${num}</strong>` +
         (label ? ` <span class="exercise-type">&ndash; ${label}</span>` : '') +
-      `</span>`;
+      `</span>` +
+      deleteBtn;
     li.addEventListener('dragstart', _carteDragStart);
     li.addEventListener('dragend', _carteDragEnd);
     navList.appendChild(li);
@@ -9071,3 +10099,1467 @@ function rebuildCartesNavList(section) {
   if (cards.length > 0) navList.appendChild(_createCarteDropZone(section, cards.length));
 }
 
+
+/*  ======  AI SEQUENCE GENERATION  ======  */
+
+let _aiSeqVocab      = [];   // [{id,expression,example,grammar}]
+let _aiSeqOutline    = {};   // {S1:[{id,type,subtype,focus,vocab_ids},...], ...}
+let _aiSeqContent    = {};   // {exId: {content, status:'pending'|'done'|'error'}}
+let _aiSeqDocText    = '';   // extracted text from uploaded document
+
+const SEQ_AI_TYPES = [
+  { value: 'Leçon|simple',         label: 'Leçon simple' },
+  { value: 'Leçon|complexe',       label: 'Leçon complexe' },
+  { value: 'True or false|',       label: 'True or false' },
+  { value: 'QCU|',                 label: 'QCU' },
+  { value: 'QCM|',                 label: 'QCM' },
+  { value: 'Matching|texte-texte', label: 'Matching texte–texte' },
+  { value: 'Matching|audio-texte', label: 'Matching audio–texte' },
+  { value: 'Matching|audio-audio', label: 'Matching audio–audio' },
+  { value: 'Complete|options',     label: 'Complete (options)' },
+  { value: 'Complete|reconstruit', label: 'Complete (reconstituer)' },
+  { value: 'Flashcard|courte',     label: 'Flashcard courte' },
+  { value: 'Flashcard|longue',     label: 'Flashcard longue' },
+  { value: 'Media|',               label: 'Média' },
+  { value: 'Dialogue|',            label: 'Dialogue' },
+];
+
+const SEQ_AI_SECTIONS = {
+  S1: { label: 'S1 — Découvre',     color: 'primary' },
+  S2: { label: 'S2 — Pratique',     color: 'success' },
+  S3: { label: 'S3 — Approfondis',  color: 'warning' },
+  S4: { label: 'S4 — Consolide',    color: 'danger' },
+};
+
+function showSeqAiPanel() {
+  document.getElementById('welcome-screen').style.display = 'none';
+  document.getElementById('section-overview').style.display = 'none';
+  document.getElementById('exercise-view').style.display = 'none';
+  document.getElementById('preview-section').style.display = 'none';
+  document.getElementById('seqAiPanel').style.display = 'block';
+  document.getElementById('seqAiStep0').style.display = 'block';
+  document.getElementById('seqAiStep1').style.display = 'none';
+  document.getElementById('seqAiStep2').style.display = 'none';
+}
+
+function hideSeqAiPanel() {
+  document.getElementById('seqAiPanel').style.display = 'none';
+  document.getElementById('welcome-screen').style.display = 'block';
+}
+
+function aiSeqBackToVocab() {
+  document.getElementById('seqAiStep0').style.display = 'block';
+  document.getElementById('seqAiStep1').style.display = 'none';
+  document.getElementById('seqAiStep2').style.display = 'none';
+}
+
+function aiSeqBackToOutline() {
+  document.getElementById('seqAiStep1').style.display = 'block';
+  document.getElementById('seqAiStep2').style.display = 'none';
+}
+
+// ── Document upload ──────────────────────────────────────────────────────────
+
+async function aiSeqHandleDocUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const status = document.getElementById('seqAiDocStatus');
+  status.style.display = 'block';
+  status.textContent = 'Lecture du document…';
+  try {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext === 'pdf') {
+      // Use FileReader to read as ArrayBuffer then extract text via pdf.js if available,
+      // otherwise fall back to reading raw bytes as text
+      const text = await _readPdfAsText(file);
+      _aiSeqDocText = text;
+    } else {
+      // md / txt / json — read as plain text
+      _aiSeqDocText = await file.text();
+    }
+    // Truncate to ~6000 chars to stay within prompt limits
+    if (_aiSeqDocText.length > 6000) _aiSeqDocText = _aiSeqDocText.slice(0, 6000) + '…';
+    status.textContent = `Document chargé (${_aiSeqDocText.length} caractères).`;
+    status.className = 'small text-success mt-1';
+  } catch (e) {
+    status.textContent = 'Erreur de lecture : ' + e.message;
+    status.className = 'small text-danger mt-1';
+    _aiSeqDocText = '';
+  }
+}
+
+async function _readPdfAsText(file) {
+  // Simple approach: read as text (works for text-based PDFs, gives garbage for scanned ones)
+  // A full pdf.js integration would be added later if needed
+  return await file.text();
+}
+
+// ── Step 0: Vocabulary generation ────────────────────────────────────────────
+
+async function aiSeqGenerateVocab() {
+  const theme = document.getElementById('seqAiTheme')?.value?.trim();
+  if (!theme) { alert('Veuillez saisir un thème.'); return; }
+  const niveau = document.getElementById('seqAiNiveau')?.value || '3';
+  const contraintes = document.getElementById('seqAiContraintes')?.value?.trim() || '';
+  const vocabCount = parseInt(document.getElementById('seqAiVocabCount')?.value) || 0;
+
+  _aiSpinner('seqAiStep0Spinner', true);
+  const btn = document.getElementById('seqAiVocabBtn');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(`${SERVER_URL}/api/anthropic/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+      body: JSON.stringify({
+        step: 'seq-vocab', niveau: parseInt(niveau), theme, contraintes,
+        docText: _aiSeqDocText, vocabCount
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+    _aiSeqVocab = data.vocabulary;
+    _aiSeqRenderVocabList();
+    document.getElementById('seqAiVocabResult').style.display = 'block';
+  } catch (e) {
+    alert(`Erreur : ${e.message}`);
+  } finally {
+    _aiSpinner('seqAiStep0Spinner', false);
+    if (btn) btn.disabled = false;
+  }
+}
+
+function _aiSeqRenderVocabList() {
+  const container = document.getElementById('seqAiVocabList');
+  container.innerHTML = _aiSeqVocab.map((v, i) => `
+    <div class="d-flex gap-2 align-items-start mb-2" data-vocab-idx="${i}" id="vocabRow_${v.id}">
+      <div class="flex-grow-1">
+        <div class="row g-1">
+          <div class="col-md-4">
+            <input type="text" class="form-control form-control-sm fw-bold"
+              placeholder="Expression" value="${_esc(v.expression)}"
+              oninput="_aiSeqVocabFieldChange(${i},'expression',this.value)">
+          </div>
+          <div class="col-md-5">
+            <input type="text" class="form-control form-control-sm"
+              placeholder="Exemple" value="${_esc(v.example)}"
+              oninput="_aiSeqVocabFieldChange(${i},'example',this.value)">
+          </div>
+          <div class="col-md-3">
+            <input type="text" class="form-control form-control-sm text-muted"
+              placeholder="Note grammaticale" value="${_esc(v.grammar||'')}"
+              oninput="_aiSeqVocabFieldChange(${i},'grammar',this.value)">
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="_aiSeqRemoveVocabRow(${i})">
+        <i class="bi bi-x"></i>
+      </button>
+    </div>`).join('');
+}
+
+function _aiSeqVocabFieldChange(idx, field, value) {
+  if (_aiSeqVocab[idx]) _aiSeqVocab[idx][field] = value;
+}
+
+function _aiSeqRemoveVocabRow(idx) {
+  _aiSeqVocab.splice(idx, 1);
+  _aiSeqRenderVocabList();
+}
+
+function _aiSeqAddVocabRow() {
+  const id = 'v' + (_aiSeqVocab.length + 1);
+  _aiSeqVocab.push({ id, expression: '', example: '', grammar: '' });
+  _aiSeqRenderVocabList();
+}
+
+function _aiSeqCollectVocab() {
+  // Read current DOM values back into _aiSeqVocab
+  _aiSeqVocab.forEach((v, i) => {
+    const row = document.querySelector(`[data-vocab-idx="${i}"]`);
+    if (!row) return;
+    const inputs = row.querySelectorAll('input');
+    v.expression = inputs[0]?.value.trim() || v.expression;
+    v.example    = inputs[1]?.value.trim() || v.example;
+    v.grammar    = inputs[2]?.value.trim() || null;
+  });
+  return _aiSeqVocab.filter(v => v.expression);
+}
+
+function aiSeqGoToOutline() {
+  _aiSeqVocab = _aiSeqCollectVocab();
+  if (!_aiSeqVocab.length) { alert('Ajoutez au moins une expression.'); return; }
+  document.getElementById('seqAiStep0').style.display = 'none';
+  document.getElementById('seqAiStep1').style.display = 'block';
+  document.getElementById('seqAiStep2').style.display = 'none';
+  document.getElementById('seqAiOutlineResult').style.display = 'none';
+}
+
+// ── Step 1: Outline generation ────────────────────────────────────────────────
+
+async function aiSeqGenerateOutline() {
+  const theme = document.getElementById('seqAiTheme')?.value?.trim() || '';
+  const niveau = document.getElementById('seqAiNiveau')?.value || '3';
+  const contraintes = document.getElementById('seqAiContraintes')?.value?.trim() || '';
+  const counts = {
+    S1: parseInt(document.getElementById('seqAiCountS1')?.value) || 5,
+    S2: parseInt(document.getElementById('seqAiCountS2')?.value) || 5,
+    S3: parseInt(document.getElementById('seqAiCountS3')?.value) || 5,
+    S4: parseInt(document.getElementById('seqAiCountS4')?.value) || 5,
+  };
+  _aiSeqVocab = _aiSeqCollectVocab();
+
+  _aiSpinner('seqAiStep1Spinner', true);
+  const btn = document.getElementById('seqAiOutlineBtn');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(`${SERVER_URL}/api/anthropic/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+      body: JSON.stringify({ step: 'seq-outline', niveau: parseInt(niveau), theme, contraintes, vocabulary: _aiSeqVocab, counts })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+    _aiSeqOutline = data.outline;
+    _aiSeqRenderOutline();
+    document.getElementById('seqAiOutlineResult').style.display = 'block';
+  } catch (e) {
+    alert(`Erreur : ${e.message}`);
+  } finally {
+    _aiSpinner('seqAiStep1Spinner', false);
+    if (btn) btn.disabled = false;
+  }
+}
+
+function _aiSeqRenderOutline() {
+  const board = document.getElementById('seqAiOutlineBoard');
+  const typeOptions = SEQ_AI_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('');
+
+  let html = '<div class="row g-3">';
+  Object.entries(SEQ_AI_SECTIONS).forEach(([sKey, sMeta]) => {
+    const exercises = _aiSeqOutline[sKey] || [];
+    html += `<div class="col-12">
+      <div class="card border-${sMeta.color}" style="border-radius:10px;">
+        <div class="card-header bg-${sMeta.color} bg-opacity-10 d-flex justify-content-between align-items-center py-2">
+          <strong class="text-${sMeta.color}">${sMeta.label}</strong>
+          <button class="btn btn-sm btn-outline-${sMeta.color}" onclick="_aiSeqAddOutlineRow('${sKey}')">
+            <i class="bi bi-plus"></i> Ajouter
+          </button>
+        </div>
+        <div class="card-body p-2" id="outlineSection_${sKey}">`;
+
+    exercises.forEach((ex, i) => {
+      html += _aiSeqOutlineRowHtml(sKey, ex, i, typeOptions);
+    });
+
+    html += `</div></div></div>`;
+  });
+  html += '</div>';
+  board.innerHTML = html;
+
+  // Enable drag-and-drop for each section
+  Object.keys(SEQ_AI_SECTIONS).forEach(sKey => _aiSeqInitDrag(`outlineSection_${sKey}`, sKey));
+}
+
+function _aiSeqOutlineRowHtml(sKey, ex, i, typeOptions) {
+  const typeVal = `${ex.type}|${ex.subtype || ''}`;
+  const isMatching = ex.type === 'Matching';
+
+  // Build vocab selector checkboxes — 1 max except Matching
+  const vocabChecks = _aiSeqVocab.map(v =>
+    `<div class="form-check form-check-inline">
+      <input class="form-check-input" type="checkbox" value="${v.id}"
+        id="vc_${ex.id}_${v.id}"
+        ${(ex.vocab_ids||[]).includes(v.id) ? 'checked' : ''}
+        onchange="_aiSeqVocabCheckChange('${sKey}','${ex.id}','${v.id}',this.checked,${isMatching})">
+      <label class="form-check-label small" for="vc_${ex.id}_${v.id}">${_esc(v.expression)}</label>
+    </div>`
+  ).join('');
+
+  return `<div class="border rounded p-2 mb-2 bg-white" data-ex-id="${ex.id}" data-section="${sKey}">
+    <div class="d-flex gap-2 align-items-start">
+      <span class="text-muted mt-1" style="cursor:grab;" title="Glisser pour réorganiser"><i class="bi bi-grip-vertical"></i></span>
+      <div class="flex-grow-1">
+        <div class="row g-2 mb-1">
+          <div class="col-md-4">
+            <select class="form-select form-select-sm"
+              onchange="_aiSeqOutlineTypeChange('${sKey}','${ex.id}',this.value)">
+              ${SEQ_AI_TYPES.map(t => `<option value="${t.value}" ${t.value === typeVal ? 'selected':''}>${t.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="col-md-8">
+            <input type="text" class="form-control form-control-sm"
+              placeholder="Focus pédagogique…" value="${_esc(ex.focus || '')}"
+              oninput="_aiSeqOutlineFocusChange('${sKey}','${ex.id}',this.value)">
+          </div>
+        </div>
+        <div class="small text-muted">
+          <span class="me-1">Expression${isMatching ? 's' : ''} ciblée${isMatching ? 's' : ''} :</span>${vocabChecks}
+        </div>
+      </div>
+      <button class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="_aiSeqRemoveOutlineRow('${sKey}','${ex.id}')">
+        <i class="bi bi-x"></i>
+      </button>
+    </div>
+  </div>`;
+}
+
+function _aiSeqOutlineTypeChange(sKey, exId, val) {
+  const ex = ((_aiSeqOutline[sKey] || []).find(e => e.id === exId));
+  if (!ex) return;
+  const [type, subtype] = val.split('|');
+  ex.type    = type;
+  ex.subtype = subtype || null;
+}
+
+function _aiSeqOutlineFocusChange(sKey, exId, value) {
+  const ex = ((_aiSeqOutline[sKey] || []).find(e => e.id === exId));
+  if (ex) ex.focus = value;
+}
+
+function _aiSeqVocabCheckChange(sKey, exId, vocabId, checked, isMatching) {
+  const ex = ((_aiSeqOutline[sKey] || []).find(e => e.id === exId));
+  if (!ex) return;
+  if (!ex.vocab_ids) ex.vocab_ids = [];
+  if (checked) {
+    // Enforce max 1 for non-Matching, unchecking others first
+    if (!isMatching && ex.vocab_ids.length >= 1) {
+      // Uncheck the currently checked one in the DOM
+      ex.vocab_ids.forEach(existingId => {
+        const el = document.getElementById(`vc_${exId}_${existingId}`);
+        if (el) el.checked = false;
+      });
+      ex.vocab_ids = [];
+    }
+    if (!ex.vocab_ids.includes(vocabId)) ex.vocab_ids.push(vocabId);
+  } else {
+    ex.vocab_ids = ex.vocab_ids.filter(id => id !== vocabId);
+  }
+}
+
+function _aiSeqAddOutlineRow(sKey) {
+  if (!_aiSeqOutline[sKey]) _aiSeqOutline[sKey] = [];
+  const newId = sKey.toLowerCase() + '_' + Date.now();
+  _aiSeqOutline[sKey].push({ id: newId, type: 'QCU', subtype: null, focus: '', vocab_ids: [] });
+  _aiSeqRenderOutline();
+}
+
+function _aiSeqRemoveOutlineRow(sKey, exId) {
+  if (!_aiSeqOutline[sKey]) return;
+  _aiSeqOutline[sKey] = _aiSeqOutline[sKey].filter(e => e.id !== exId);
+  _aiSeqRenderOutline();
+}
+
+function _aiSeqInitDrag(containerId, sKey) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let dragged = null;
+  container.addEventListener('dragstart', e => {
+    dragged = e.target.closest('[data-ex-id]');
+    if (dragged) { dragged.style.opacity = '0.5'; e.dataTransfer.effectAllowed = 'move'; }
+  });
+  container.addEventListener('dragend', e => {
+    if (dragged) { dragged.style.opacity = ''; dragged = null; }
+  });
+  container.addEventListener('dragover', e => {
+    e.preventDefault();
+    const over = e.target.closest('[data-ex-id]');
+    if (over && dragged && over !== dragged) {
+      const rect = over.getBoundingClientRect();
+      const after = e.clientY > rect.top + rect.height / 2;
+      container.insertBefore(dragged, after ? over.nextSibling : over);
+    }
+  });
+  container.addEventListener('drop', e => {
+    e.preventDefault();
+    // Sync _aiSeqOutline order from DOM
+    _aiSeqOutline[sKey] = [...container.querySelectorAll('[data-ex-id]')]
+      .map(el => (_aiSeqOutline[sKey] || []).find(ex => ex.id === el.dataset.exId))
+      .filter(Boolean);
+  });
+  // Make rows draggable
+  container.querySelectorAll('[data-ex-id]').forEach(row => row.setAttribute('draggable', 'true'));
+}
+
+function _aiSeqCollectOutline() {
+  // Read DOM type/focus/vocab_ids values back (already kept in sync via event handlers)
+  return _aiSeqOutline;
+}
+
+function aiSeqGoToContent() {
+  _aiSeqOutline = _aiSeqCollectOutline();
+  const total = Object.values(_aiSeqOutline).reduce((s, a) => s + a.length, 0);
+  if (!total) { alert('Le plan est vide.'); return; }
+  document.getElementById('seqAiStep0').style.display = 'none';
+  document.getElementById('seqAiStep1').style.display = 'none';
+  document.getElementById('seqAiStep2').style.display = 'block';
+  _aiSeqStartContentGeneration();
+}
+
+// ── Step 2: Content generation ────────────────────────────────────────────────
+
+function _aiSeqBuildContentBoard() {
+  const board = document.getElementById('seqAiContentBoard');
+  let html = '';
+  Object.entries(SEQ_AI_SECTIONS).forEach(([sKey, sMeta]) => {
+    const exercises = _aiSeqOutline[sKey] || [];
+    if (!exercises.length) return;
+    html += `<div class="mb-4">
+      <h6 class="fw-bold text-${sMeta.color} mb-2">${sMeta.label}</h6>
+      <div id="contentSection_${sKey}">`;
+    exercises.forEach(ex => {
+      const typeLabel = SEQ_AI_TYPES.find(t => {
+        const [tp, sb] = t.value.split('|');
+        return tp === ex.type && (sb||null) === (ex.subtype||null);
+      })?.label || ex.type;
+      html += `<div class="card mb-2" id="contentCard_${ex.id}" data-ex-id="${ex.id}" data-section="${sKey}">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center bg-${sMeta.color} bg-opacity-10">
+          <span>
+            <span class="badge bg-${sMeta.color} me-2">${sKey}</span>
+            <strong class="small">${_esc(typeLabel)}</strong>
+            <span class="text-muted small ms-2">${_esc(ex.focus||'')}</span>
+          </span>
+          <div class="d-flex gap-1" id="contentCardActions_${ex.id}">
+            <div class="spinner-border spinner-border-sm text-secondary" id="contentSpinner_${ex.id}"></div>
+          </div>
+        </div>
+        <div class="card-body p-2" id="contentCardBody_${ex.id}" style="display:none;"></div>
+      </div>`;
+    });
+    html += `</div></div>`;
+  });
+  board.innerHTML = html;
+
+  // Drag to reorder within sections
+  Object.keys(SEQ_AI_SECTIONS).forEach(sKey => _aiSeqInitContentDrag(`contentSection_${sKey}`, sKey));
+}
+
+function _aiSeqInitContentDrag(containerId, sKey) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let dragged = null;
+  container.addEventListener('dragstart', e => {
+    dragged = e.target.closest('[data-ex-id]');
+    if (dragged) { dragged.style.opacity = '0.5'; e.dataTransfer.effectAllowed = 'move'; }
+  });
+  container.addEventListener('dragend', e => { if (dragged) { dragged.style.opacity = ''; dragged = null; } });
+  container.addEventListener('dragover', e => {
+    e.preventDefault();
+    const over = e.target.closest('[data-ex-id]');
+    if (over && dragged && over !== dragged) {
+      const rect = over.getBoundingClientRect();
+      container.insertBefore(dragged, e.clientY > rect.top + rect.height / 2 ? over.nextSibling : over);
+    }
+  });
+  container.querySelectorAll('[data-ex-id]').forEach(row => row.setAttribute('draggable', 'true'));
+}
+
+async function _aiSeqStartContentGeneration() {
+  _aiSeqContent = {};
+  _aiSeqBuildContentBoard();
+
+  const theme = document.getElementById('seqAiTheme')?.value?.trim() || '';
+  const niveau = parseInt(document.getElementById('seqAiNiveau')?.value || '3');
+  const contraintes = document.getElementById('seqAiContraintes')?.value?.trim() || '';
+
+  // Collect all exercises flat
+  const allExercises = [];
+  Object.entries(_aiSeqOutline).forEach(([sKey, exList]) => {
+    exList.forEach(ex => allExercises.push({ ...ex, section: sKey }));
+  });
+
+  // Fire all in parallel
+  await Promise.allSettled(allExercises.map(ex => _aiSeqGenerateOneExercise(ex, niveau, theme, contraintes)));
+
+  // Show populate bar once all done
+  const bar = document.getElementById('seqAiPopulateBar');
+  if (bar) bar.style.setProperty('display', 'flex', 'important');
+}
+
+async function _aiSeqGenerateOneExercise(ex, niveau, theme, contraintes, isRegen = false) {
+  const cardBody   = document.getElementById(`contentCardBody_${ex.id}`);
+  const spinner    = document.getElementById(`contentSpinner_${ex.id}`);
+  const actionsDiv = document.getElementById(`contentCardActions_${ex.id}`);
+
+  if (spinner) spinner.style.display = 'inline-block';
+  if (cardBody) { cardBody.style.display = 'none'; cardBody.innerHTML = ''; }
+
+  try {
+    const res = await fetch(`${SERVER_URL}/api/anthropic/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+      body: JSON.stringify({
+        step: 'seq-exercise', niveau, theme, contraintes,
+        vocabulary: _aiSeqVocab,
+        outline: _aiSeqOutline,
+        exercise: ex
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+
+    _aiSeqContent[ex.id] = { content: data.content, type: ex.type, subtype: ex.subtype };
+    if (cardBody) {
+      cardBody.innerHTML = _aiSeqRenderExerciseContent(ex, data.content);
+      cardBody.style.display = 'block';
+    }
+    if (spinner) spinner.style.display = 'none';
+    if (actionsDiv) {
+      actionsDiv.innerHTML = `<button class="btn btn-sm btn-outline-secondary" onclick="_aiSeqRegenExercise('${ex.id}')">
+        <i class="bi bi-arrow-clockwise me-1"></i> Regénérer
+      </button>`;
+    }
+  } catch (e) {
+    if (spinner) spinner.style.display = 'none';
+    if (actionsDiv) {
+      actionsDiv.innerHTML = `<span class="text-danger small me-2"><i class="bi bi-exclamation-triangle me-1"></i>${_esc(e.message)}</span>
+        <button class="btn btn-sm btn-outline-danger" onclick="_aiSeqRegenExercise('${ex.id}')">
+          <i class="bi bi-arrow-clockwise"></i> Réessayer
+        </button>`;
+    }
+  }
+}
+
+function _aiSeqRegenExercise(exId) {
+  const theme = document.getElementById('seqAiTheme')?.value?.trim() || '';
+  const niveau = parseInt(document.getElementById('seqAiNiveau')?.value || '3');
+  const contraintes = document.getElementById('seqAiContraintes')?.value?.trim() || '';
+  const sKey = Object.keys(_aiSeqOutline).find(k => _aiSeqOutline[k].some(e => e.id === exId));
+  if (!sKey) return;
+  const ex = { ...(_aiSeqOutline[sKey].find(e => e.id === exId) || {}), section: sKey };
+  _aiSeqGenerateOneExercise(ex, niveau, theme, contraintes, true);
+}
+
+function _aiSeqRenderExerciseContent(ex, c) {
+  const sKey = ex.section || 'S1';
+  const sMeta = SEQ_AI_SECTIONS[sKey] || SEQ_AI_SECTIONS.S1;
+  let html = '<div class="row g-2 p-1">';
+
+  if (ex.type === 'Leçon' && ex.subtype === 'simple') {
+    html += `
+      <div class="col-md-6"><label class="form-label small mb-1">Expression (français)</label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="expression_fr" value="${_esc(c.expression_fr)}"></div>
+      <div class="col-md-6"><label class="form-label small mb-1">Expression (anglais)</label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="expression_en" value="${_esc(c.expression_en)}"></div>
+      <div class="col-md-6"><label class="form-label small mb-1">Exemple (français)</label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="exemple_fr" value="${_esc(c.exemple_fr)}"></div>
+      <div class="col-md-6"><label class="form-label small mb-1">Exemple (anglais)</label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="exemple_en" value="${_esc(c.exemple_en)}"></div>`;
+  } else if (ex.type === 'True or false') {
+    html += `
+      <div class="col-12"><label class="form-label small mb-1">🎧 Script audio</label>
+        <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-ex="${ex.id}" data-f="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+      <div class="col-12"><label class="form-label small mb-1">Affirmation</label>
+        <textarea class="form-control form-control-sm" rows="2" data-ex="${ex.id}" data-f="affirmation">${_esc(c.affirmation)}</textarea></div>
+      <div class="col-md-4"><label class="form-label small mb-1">Bonne réponse</label>
+        <select class="form-select form-select-sm" data-ex="${ex.id}" data-f="bonne_reponse">
+          <option value="True" ${c.bonne_reponse==='True'?'selected':''}>Vraie</option>
+          <option value="False" ${c.bonne_reponse==='False'?'selected':''}>Fausse</option>
+        </select></div>
+      <div class="col-md-8"><label class="form-label small mb-1">Feedback</label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="feedback" value="${_esc(c.feedback)}"></div>`;
+  } else if (ex.type === 'QCU') {
+    html += `
+      <div class="col-12"><label class="form-label small mb-1">🎧 Script audio</label>
+        <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-ex="${ex.id}" data-f="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+      <div class="col-12"><label class="form-label small mb-1">Question</label>
+        <textarea class="form-control form-control-sm" rows="2" data-ex="${ex.id}" data-f="question">${_esc(c.question)}</textarea></div>
+      ${['A','B','C','D'].map(l => `
+      <div class="col-md-6"><label class="form-label small mb-1">${l==='A'?'✅ ':''}Réponse ${l}</label>
+        <input type="text" class="form-control form-control-sm ${l==='A'?'border-success':''}" data-ex="${ex.id}" data-f="answer_${l}" value="${_esc((c.answers||{})[l])}"></div>`).join('')}
+      <div class="col-12"><label class="form-label small mb-1">Feedback</label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="feedback" value="${_esc(c.feedback)}"></div>`;
+  } else if (ex.type === 'QCM') {
+    const correct = c.correct || [];
+    html += `
+      <div class="col-12"><label class="form-label small mb-1">🎧 Script audio</label>
+        <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-ex="${ex.id}" data-f="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+      <div class="col-12"><label class="form-label small mb-1">Question</label>
+        <textarea class="form-control form-control-sm" rows="2" data-ex="${ex.id}" data-f="question">${_esc(c.question)}</textarea></div>
+      ${['A','B','C','D'].map(l => `
+      <div class="col-md-6"><div class="input-group input-group-sm">
+        <div class="input-group-text"><input type="checkbox" data-ex="${ex.id}" data-f="correct_${l}" ${correct.includes(l)?'checked':''}></div>
+        <input type="text" class="form-control" placeholder="Réponse ${l}" data-ex="${ex.id}" data-f="answer_${l}" value="${_esc((c.answers||{})[l])}">
+      </div></div>`).join('')}
+      <div class="col-12"><label class="form-label small mb-1">Feedback</label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="feedback" value="${_esc(c.feedback)}"></div>`;
+  } else if (ex.type === 'Matching' && ex.subtype === 'texte-texte') {
+    const pairs = c.pairs || Array(4).fill({left:'',right:''});
+    html += `<div class="col-6"><strong class="small">Gauche</strong></div><div class="col-6"><strong class="small">Droite</strong></div>`;
+    for (let p = 0; p < 4; p++) {
+      html += `
+        <div class="col-6"><input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="pair_left_${p}" value="${_esc((pairs[p]||{}).left)}"></div>
+        <div class="col-6"><input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="pair_right_${p}" value="${_esc((pairs[p]||{}).right)}"></div>`;
+    }
+    html += `<div class="col-12"><label class="form-label small mb-1">Feedback</label>
+      <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="feedback" value="${_esc(c.feedback)}"></div>`;
+  } else if (ex.type === 'Matching' && ex.subtype === 'audio-texte') {
+    const pairs = c.pairs || Array(4).fill({left_transcription:'',right:''});
+    html += `<div class="col-6"><strong class="small">🎧 Script audio gauche</strong></div><div class="col-6"><strong class="small">Texte droite</strong></div>`;
+    for (let p = 0; p < 4; p++) {
+      html += `
+        <div class="col-6"><textarea class="form-control form-control-sm" rows="2" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-ex="${ex.id}" data-f="pair_left_${p}">${_esc((pairs[p]||{}).left_transcription||(pairs[p]||{}).left)}</textarea></div>
+        <div class="col-6"><input type="text" class="form-control form-control-sm mt-1" data-ex="${ex.id}" data-f="pair_right_${p}" value="${_esc((pairs[p]||{}).right)}"></div>`;
+    }
+    html += `<div class="col-12"><label class="form-label small mb-1">Feedback</label>
+      <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="feedback" value="${_esc(c.feedback)}"></div>`;
+  } else if (ex.type === 'Complete' && ex.subtype === 'options') {
+    const opts = c.options || [];
+    html += `
+      <div class="col-12"><label class="form-label small mb-1">🎧 Script audio</label>
+        <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-ex="${ex.id}" data-f="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+      <div class="col-12"><label class="form-label small mb-1">Texte complet <span class="text-muted fw-normal">(mots à masquer entre #mot#)</span></label>
+        <textarea class="form-control form-control-sm" rows="3" data-ex="${ex.id}" data-f="texte_complet">${_esc(c.texte_complet)}</textarea></div>
+      <div class="col-12"><label class="form-label small mb-1">Options</label>
+        ${opts.map((opt, oi) => `<input type="text" class="form-control form-control-sm mb-1" data-ex="${ex.id}" data-f="option_${oi}" value="${_esc(opt)}">`).join('')}
+      </div>`;
+  } else if (ex.type === 'Complete' && ex.subtype === 'reconstruit') {
+    html += `
+      <div class="col-12"><label class="form-label small mb-1">🎧 Script audio</label>
+        <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-ex="${ex.id}" data-f="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+      <div class="col-12"><label class="form-label small mb-1">Texte complet <span class="text-muted fw-normal">(éléments entre #mot#)</span></label>
+        <textarea class="form-control form-control-sm" rows="3" data-ex="${ex.id}" data-f="texte_complet">${_esc(c.texte_complet)}</textarea></div>`;
+
+  } else if (ex.type === 'Matching' && ex.subtype === 'audio-audio') {
+    const pairs = c.pairs || Array(4).fill({left_transcription:'',right_transcription:''});
+    html += `<div class="col-6"><strong class="small">🎧 Script audio gauche</strong></div><div class="col-6"><strong class="small">🎧 Script audio droite</strong></div>`;
+    for (let p = 0; p < 4; p++) {
+      html += `
+        <div class="col-6"><textarea class="form-control form-control-sm" rows="2" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-ex="${ex.id}" data-f="pair_left_${p}">${_esc((pairs[p]||{}).left_transcription)}</textarea></div>
+        <div class="col-6"><textarea class="form-control form-control-sm" rows="2" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-ex="${ex.id}" data-f="pair_right_${p}">${_esc((pairs[p]||{}).right_transcription)}</textarea></div>`;
+    }
+    html += `<div class="col-12"><label class="form-label small mb-1">Feedback</label>
+      <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="feedback" value="${_esc(c.feedback)}"></div>`;
+
+  } else if (ex.type === 'Flashcard') {
+    html += `
+      <div class="col-md-6"><label class="form-label small mb-1">Recto <span class="text-muted fw-normal">(concept / mot)</span></label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="front_text" value="${_esc(c.front_text)}"></div>
+      <div class="col-md-6"><label class="form-label small mb-1">Verso <span class="text-muted fw-normal">(${ex.subtype === 'courte' ? 'réponse courte' : 'phrase complète'})</span></label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="back_text" value="${_esc(c.back_text)}"></div>
+      <div class="col-12 text-muted small"><i class="bi bi-info-circle me-1"></i>Les fichiers audio seront enregistrés séparément dans l'éditeur.</div>`;
+
+  } else if (ex.type === 'Leçon' && ex.subtype === 'complexe') {
+    const lignes = c.lignes || [];
+    const nbCols = c.nb_cols || (c.headers?.length) || 1;
+    const nbRows = c.nb_rows || lignes.length || 1;
+    const headers = c.headers || [];
+    html += `
+      <div class="col-12"><label class="form-label small mb-1">Texte explicatif (HTML)</label>
+        <textarea class="form-control form-control-sm" rows="4" data-ex="${ex.id}" data-f="texte_html">${_esc(c.texte_html)}</textarea></div>
+      <div class="col-md-3"><label class="form-label small mb-1">Colonnes</label>
+        <input type="number" class="form-control form-control-sm" min="1" max="2" data-ex="${ex.id}" data-f="nb_cols" value="${nbCols}"></div>
+      <div class="col-md-3"><label class="form-label small mb-1">Lignes</label>
+        <input type="number" class="form-control form-control-sm" min="1" max="3" data-ex="${ex.id}" data-f="nb_rows" value="${nbRows}"></div>
+      <div class="col-md-6"><label class="form-label small mb-1">En-têtes <span class="text-muted fw-normal">(séparés par |)</span></label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="headers" value="${_esc(headers.join('|'))}"></div>`;
+    for (let r = 0; r < nbRows; r++) {
+      for (let cc = 0; cc < nbCols; cc++) {
+        const cellVal = (lignes[r]?.colonnes || lignes[r]?.Colonnes || [])[cc]?.texte || (lignes[r]?.colonnes || lignes[r]?.Colonnes || [])[cc]?.Texte || '';
+        html += `<div class="col-md-${nbCols === 1 ? 12 : 6}"><label class="form-label small mb-1">Cellule ${r+1}.${cc+1}</label>
+          <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="cell_${r}_${cc}" value="${_esc(cellVal)}"></div>`;
+      }
+    }
+
+  } else if (ex.type === 'Media') {
+    html += `
+      <div class="col-md-4"><label class="form-label small mb-1">Type de média</label>
+        <select class="form-select form-select-sm" data-ex="${ex.id}" data-f="media_type">
+          <option value="image_audio" ${(c.media_type||'image_audio')==='image_audio'?'selected':''}>Image + Audio</option>
+          <option value="video" ${c.media_type==='video'?'selected':''}>Vidéo</option>
+        </select></div>
+      <div class="col-12"><label class="form-label small mb-1">🎧 Script / transcription à enregistrer</label>
+        <textarea class="form-control form-control-sm" rows="5" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-ex="${ex.id}" data-f="transcription">${_esc(c.transcription)}</textarea></div>
+      <div class="col-12 text-muted small"><i class="bi bi-info-circle me-1"></i>Le fichier média sera uploadé séparément dans l'éditeur.</div>`;
+
+  } else if (ex.type === 'Dialogue') {
+    const script = c.script || [];
+    html += `
+      <div class="col-12"><label class="form-label small mb-1">Consigne</label>
+        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="consigne" value="${_esc(c.consigne)}"></div>
+      <div class="col-12"><label class="form-label small mb-1">Script</label>`;
+    script.forEach((line, li) => {
+      html += `<div class="d-flex gap-2 mb-1">
+        <input type="text" class="form-control form-control-sm" style="max-width:160px;" placeholder="Interlocuteur"
+          data-ex="${ex.id}" data-f="script_nom_${li}" value="${_esc(line.nom||line.Nom)}">
+        <input type="text" class="form-control form-control-sm" placeholder="Réplique"
+          data-ex="${ex.id}" data-f="script_texte_${li}" value="${_esc(line.texte||line.Texte)}">
+      </div>`;
+    });
+    html += `</div>
+      <div class="col-12 text-muted small"><i class="bi bi-info-circle me-1"></i>L'audio du dialogue sera enregistré séparément.</div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function _aiSeqCollectContent() {
+  const result = {};
+  Object.entries(_aiSeqOutline).forEach(([sKey, exList]) => {
+    result[sKey] = exList.map(ex => {
+      const stored = _aiSeqContent[ex.id] || {};
+      const get = f => {
+        const el = document.querySelector(`[data-ex="${ex.id}"][data-f="${f}"]`);
+        if (!el) return stored.content?.[f];
+        return el.type === 'checkbox' ? el.checked : el.value;
+      };
+      const c = {};
+      if (ex.type === 'Leçon') {
+        c.expression_fr = get('expression_fr'); c.expression_en = get('expression_en');
+        c.exemple_fr    = get('exemple_fr');    c.exemple_en    = get('exemple_en');
+      } else if (ex.type === 'True or false') {
+        c.audio_transcription = get('audio_transcription');
+        c.affirmation = get('affirmation'); c.bonne_reponse = get('bonne_reponse'); c.feedback = get('feedback');
+      } else if (ex.type === 'QCU') {
+        c.audio_transcription = get('audio_transcription'); c.question = get('question');
+        c.answers = { A: get('answer_A'), B: get('answer_B'), C: get('answer_C'), D: get('answer_D') };
+        c.feedback = get('feedback');
+      } else if (ex.type === 'QCM') {
+        c.audio_transcription = get('audio_transcription'); c.question = get('question');
+        c.answers = { A: get('answer_A'), B: get('answer_B'), C: get('answer_C'), D: get('answer_D') };
+        c.correct = ['A','B','C','D'].filter(l => get(`correct_${l}`));
+        c.feedback = get('feedback');
+      } else if (ex.type === 'Matching' && ex.subtype === 'texte-texte') {
+        c.pairs = [0,1,2,3].map(p => ({ left: get(`pair_left_${p}`), right: get(`pair_right_${p}`) }));
+        c.feedback = get('feedback');
+      } else if (ex.type === 'Matching' && ex.subtype === 'audio-texte') {
+        c.pairs = [0,1,2,3].map(p => ({ left_transcription: get(`pair_left_${p}`), right: get(`pair_right_${p}`) }));
+        c.feedback = get('feedback');
+      } else if (ex.type === 'Complete' && ex.subtype === 'options') {
+        c.audio_transcription = get('audio_transcription'); c.texte_complet = get('texte_complet');
+        const opts = [];
+        for (let oi = 0; oi < 8; oi++) { const v = get(`option_${oi}`); if (v != null) opts.push(v); }
+        c.options = opts.filter(Boolean);
+      } else if (ex.type === 'Complete' && ex.subtype === 'reconstruit') {
+        c.audio_transcription = get('audio_transcription'); c.texte_complet = get('texte_complet');
+      } else if (ex.type === 'Matching' && ex.subtype === 'audio-audio') {
+        c.pairs = [0,1,2,3].map(p => ({ left_transcription: get(`pair_left_${p}`), right_transcription: get(`pair_right_${p}`) }));
+        c.feedback = get('feedback');
+      } else if (ex.type === 'Flashcard') {
+        c.front_text = get('front_text'); c.back_text = get('back_text');
+        if (stored.content?.cards) c.cards = stored.content.cards;
+      } else if (ex.type === 'Leçon' && ex.subtype === 'complexe') {
+        c.texte_html = get('texte_html');
+        c.nb_cols = parseInt(get('nb_cols')) || 1;
+        c.nb_rows = parseInt(get('nb_rows')) || 1;
+        const hRaw = get('headers') || '';
+        c.headers = hRaw ? hRaw.split('|').map(s => s.trim()) : [];
+        c.has_header = c.headers.length > 0;
+        c.lignes = [];
+        for (let r = 0; r < c.nb_rows; r++) {
+          const colonnes = [];
+          for (let cc = 0; cc < c.nb_cols; cc++) colonnes.push({ texte: get(`cell_${r}_${cc}`) || '' });
+          c.lignes.push({ ligne: r + 1, colonnes });
+        }
+      } else if (ex.type === 'Media') {
+        c.media_type = get('media_type') || 'image_audio';
+        c.transcription = get('transcription');
+      } else if (ex.type === 'Dialogue') {
+        c.consigne = get('consigne');
+        c.script = [];
+        for (let li = 0; ; li++) {
+          const nom = get(`script_nom_${li}`); const texte = get(`script_texte_${li}`);
+          if (nom === undefined && texte === undefined) break;
+          c.script.push({ nom: nom || '', texte: texte || '' });
+        }
+      }
+      return { type: ex.type, subtype: ex.subtype, content: c };
+    });
+  });
+  return result;
+}
+
+// (aiSeqGenerateStructure replaced by aiSeqGenerateVocab / aiSeqGenerateOutline above)
+
+// (old structure/content functions replaced by new flow above)
+
+function _aiSeqRenderContentReview_UNUSED(activities) {
+  const container = document.getElementById('seqAiContentReview');
+  let html = '';
+
+  Object.entries(SEQ_AI_SECTIONS).forEach(([sKey, sMeta]) => {
+    const items = activities[sKey] || [];
+    if (!items.length) return;
+    html += `<div class="mb-4">
+      <h6 class="fw-bold text-${sMeta.color} mb-2">${sMeta.label}</h6>`;
+    items.forEach((item, i) => {
+      const c = item.content || {};
+      const typeLabel = SEQ_AI_TYPES.find(t => {
+        const [type, sub] = t.value.split('|');
+        return type === item.type && (sub || null) === (item.subtype || null);
+      })?.label || item.type;
+      html += `<div class="card mb-2 border-0" style="background:#f8f9fa;border-radius:10px;">
+        <div class="card-body py-3 px-3">
+          <div class="small fw-bold text-muted mb-2"><span class="badge bg-${sMeta.color} me-2">${sKey}</span>${typeLabel}</div>`;
+
+      if (item.type === 'Leçon' && item.subtype === 'simple') {
+        html += `
+          <div class="row g-2">
+            <div class="col-md-6"><label class="form-label small mb-1">Expression (français)</label>
+              <input type="text" class="form-control form-control-sm" data-section="${sKey}" data-idx="${i}" data-field="expression_fr" value="${_esc(c.expression_fr)}"></div>
+            <div class="col-md-6"><label class="form-label small mb-1">Expression (anglais)</label>
+              <input type="text" class="form-control form-control-sm" data-section="${sKey}" data-idx="${i}" data-field="expression_en" value="${_esc(c.expression_en)}"></div>
+            <div class="col-md-6"><label class="form-label small mb-1">Exemple (français)</label>
+              <input type="text" class="form-control form-control-sm" data-section="${sKey}" data-idx="${i}" data-field="exemple_fr" value="${_esc(c.exemple_fr)}"></div>
+            <div class="col-md-6"><label class="form-label small mb-1">Exemple (anglais)</label>
+              <input type="text" class="form-control form-control-sm" data-section="${sKey}" data-idx="${i}" data-field="exemple_en" value="${_esc(c.exemple_en)}"></div>
+          </div>`;
+      } else if (item.type === 'True or false') {
+        html += `
+          <div class="row g-2">
+            <div class="col-12"><label class="form-label small mb-1">Affirmation</label>
+              <textarea class="form-control form-control-sm" rows="2" data-section="${sKey}" data-idx="${i}" data-field="affirmation">${_esc(c.affirmation)}</textarea></div>
+            <div class="col-md-4"><label class="form-label small mb-1">Bonne réponse</label>
+              <select class="form-select form-select-sm" data-section="${sKey}" data-idx="${i}" data-field="bonne_reponse">
+                <option value="True" ${c.bonne_reponse === 'True' ? 'selected' : ''}>Vraie</option>
+                <option value="False" ${c.bonne_reponse === 'False' ? 'selected' : ''}>Fausse</option>
+              </select></div>
+            <div class="col-12"><label class="form-label small mb-1">🎧 Script audio (conversation à enregistrer)</label>
+              <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-section="${sKey}" data-idx="${i}" data-field="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+          </div>`;
+      } else if (item.type === 'QCU') {
+        html += `
+          <div class="row g-2">
+            <div class="col-12"><label class="form-label small mb-1">🎧 Script audio (conversation à enregistrer)</label>
+              <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-section="${sKey}" data-idx="${i}" data-field="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+            <div class="col-12"><label class="form-label small mb-1">Question de compréhension</label>
+              <textarea class="form-control form-control-sm" rows="2" data-section="${sKey}" data-idx="${i}" data-field="question">${_esc(c.question)}</textarea></div>
+            ${['A','B','C','D'].map(l => `
+            <div class="col-md-6"><label class="form-label small mb-1">${l === 'A' ? '✅ ' : ''}Réponse ${l}</label>
+              <input type="text" class="form-control form-control-sm ${l === 'A' ? 'border-success' : ''}" data-section="${sKey}" data-idx="${i}" data-field="answer_${l}" value="${_esc((c.answers || {})[l])}"></div>`).join('')}
+            <div class="col-12"><label class="form-label small mb-1">Feedback</label>
+              <textarea class="form-control form-control-sm" rows="2" data-section="${sKey}" data-idx="${i}" data-field="feedback">${_esc(c.feedback)}</textarea></div>
+          </div>`;
+      } else if (item.type === 'QCM') {
+        const correct = c.correct || [];
+        html += `
+          <div class="row g-2">
+            <div class="col-12"><label class="form-label small mb-1">🎧 Script audio (conversation à enregistrer)</label>
+              <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-section="${sKey}" data-idx="${i}" data-field="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+            <div class="col-12"><label class="form-label small mb-1">Question de compréhension</label>
+              <textarea class="form-control form-control-sm" rows="2" data-section="${sKey}" data-idx="${i}" data-field="question">${_esc(c.question)}</textarea></div>
+            ${['A','B','C','D'].map(l => `
+            <div class="col-md-6">
+              <div class="input-group input-group-sm">
+                <div class="input-group-text">
+                  <input type="checkbox" data-section="${sKey}" data-idx="${i}" data-field="correct_${l}" ${correct.includes(l) ? 'checked' : ''}>
+                </div>
+                <input type="text" class="form-control" placeholder="Réponse ${l}" data-section="${sKey}" data-idx="${i}" data-field="answer_${l}" value="${_esc((c.answers || {})[l])}">
+              </div></div>`).join('')}
+            <div class="col-12"><label class="form-label small mb-1">Feedback</label>
+              <textarea class="form-control form-control-sm" rows="2" data-section="${sKey}" data-idx="${i}" data-field="feedback">${_esc(c.feedback)}</textarea></div>
+          </div>`;
+      } else if (item.type === 'Matching' && item.subtype === 'texte-texte') {
+        const pairs = c.pairs || Array(4).fill({ left: '', right: '' });
+        html += `<div class="row g-2">
+          <div class="col-6"><strong class="small">Gauche</strong></div>
+          <div class="col-6"><strong class="small">Droite</strong></div>`;
+        for (let p = 0; p < 4; p++) {
+          html += `
+          <div class="col-6"><input type="text" class="form-control form-control-sm" data-section="${sKey}" data-idx="${i}" data-field="pair_left_${p}" value="${_esc((pairs[p] || {}).left)}"></div>
+          <div class="col-6"><input type="text" class="form-control form-control-sm" data-section="${sKey}" data-idx="${i}" data-field="pair_right_${p}" value="${_esc((pairs[p] || {}).right)}"></div>`;
+        }
+        html += `<div class="col-12"><label class="form-label small mb-1">Feedback</label>
+          <textarea class="form-control form-control-sm" rows="2" data-section="${sKey}" data-idx="${i}" data-field="feedback">${_esc(c.feedback)}</textarea></div>
+        </div>`;
+      } else if (item.type === 'Matching' && item.subtype === 'audio-texte') {
+        const pairs = c.pairs || Array(4).fill({ left_transcription: '', right: '' });
+        html += `<div class="row g-2">
+          <div class="col-6"><strong class="small">🎧 Script audio gauche</strong></div>
+          <div class="col-6"><strong class="small">Texte droite</strong></div>`;
+        for (let p = 0; p < 4; p++) {
+          html += `
+          <div class="col-6"><textarea class="form-control form-control-sm" rows="2" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-section="${sKey}" data-idx="${i}" data-field="pair_left_${p}">${_esc((pairs[p] || {}).left_transcription || (pairs[p] || {}).left)}</textarea></div>
+          <div class="col-6"><input type="text" class="form-control form-control-sm mt-1" data-section="${sKey}" data-idx="${i}" data-field="pair_right_${p}" value="${_esc((pairs[p] || {}).right)}"></div>`;
+        }
+        html += `<div class="col-12"><label class="form-label small mb-1">Feedback</label>
+          <textarea class="form-control form-control-sm" rows="2" data-section="${sKey}" data-idx="${i}" data-field="feedback">${_esc(c.feedback)}</textarea></div>
+        </div>`;
+      } else if (item.type === 'Complete' && item.subtype === 'options') {
+        const opts = c.options || [];
+        html += `<div class="row g-2">
+          <div class="col-12"><label class="form-label small mb-1">🎧 Script audio (conversation à enregistrer)</label>
+            <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-section="${sKey}" data-idx="${i}" data-field="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+          <div class="col-12"><label class="form-label small mb-1">Texte complet <span class="text-muted fw-normal">(mettez les mots à masquer entre #mot#)</span></label>
+            <textarea class="form-control form-control-sm" rows="3" data-section="${sKey}" data-idx="${i}" data-field="texte_complet">${_esc(c.texte_complet)}</textarea></div>
+          <div class="col-12"><label class="form-label small mb-1">Options <span class="text-muted fw-normal">(bonnes réponses puis distracteurs)</span></label>
+            ${opts.map((opt, oi) => `<input type="text" class="form-control form-control-sm mb-1" data-section="${sKey}" data-idx="${i}" data-field="option_${oi}" value="${_esc(opt)}">`).join('')}
+          </div>
+        </div>`;
+      } else if (item.type === 'Complete' && item.subtype === 'reconstruit') {
+        html += `<div class="row g-2">
+          <div class="col-12"><label class="form-label small mb-1">🎧 Script audio (conversation à enregistrer)</label>
+            <textarea class="form-control form-control-sm" rows="4" style="background:#f0f4ff;border-left:3px solid #0d6efd;" data-section="${sKey}" data-idx="${i}" data-field="audio_transcription">${_esc(c.audio_transcription)}</textarea></div>
+          <div class="col-12"><label class="form-label small mb-1">Texte complet <span class="text-muted fw-normal">(mettez les mots à reconstituer entre #mot#)</span></label>
+            <textarea class="form-control form-control-sm" rows="3" data-section="${sKey}" data-idx="${i}" data-field="texte_complet">${_esc(c.texte_complet)}</textarea></div>
+        </div>`;
+      }
+
+      html += `</div></div>`;
+    });
+    html += `</div>`;
+  });
+  container.innerHTML = html;
+}
+
+function _esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+// Escape for use inside single-quoted JS string literals in onclick attributes
+function _escJs(str) {
+  if (!str) return '';
+  return String(str).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+
+function _aiSeqCollectContent_UNUSED() {
+  // Read back all edited values from the review into the _aiSeqActivities structure
+  const result = {};
+  Object.keys(SEQ_AI_SECTIONS).forEach(sKey => {
+    result[sKey] = (_aiSeqActivities[sKey] || []).map((item, i) => {
+      const get = (field) => {
+        const el = document.querySelector(`[data-section="${sKey}"][data-idx="${i}"][data-field="${field}"]`);
+        if (!el) return undefined;
+        return el.type === 'checkbox' ? el.checked : el.value;
+      };
+      const c = {};
+      if (item.type === 'Leçon' && item.subtype === 'simple') {
+        c.expression_fr = get('expression_fr');
+        c.expression_en = get('expression_en');
+        c.exemple_fr    = get('exemple_fr');
+        c.exemple_en    = get('exemple_en');
+      } else if (item.type === 'True or false') {
+        c.affirmation        = get('affirmation');
+        c.bonne_reponse      = get('bonne_reponse');
+        c.audio_transcription = get('audio_transcription');
+      } else if (item.type === 'QCU') {
+        c.audio_transcription = get('audio_transcription');
+        c.question = get('question');
+        c.answers  = { A: get('answer_A'), B: get('answer_B'), C: get('answer_C'), D: get('answer_D') };
+        c.feedback = get('feedback');
+      } else if (item.type === 'QCM') {
+        c.audio_transcription = get('audio_transcription');
+        c.question = get('question');
+        c.answers  = { A: get('answer_A'), B: get('answer_B'), C: get('answer_C'), D: get('answer_D') };
+        c.correct  = ['A','B','C','D'].filter(l => get(`correct_${l}`));
+        c.feedback = get('feedback');
+      } else if (item.type === 'Matching' && item.subtype === 'texte-texte') {
+        c.pairs = [0,1,2,3].map(p => ({ left: get(`pair_left_${p}`), right: get(`pair_right_${p}`) }));
+        c.feedback = get('feedback');
+      } else if (item.type === 'Matching' && item.subtype === 'audio-texte') {
+        c.pairs = [0,1,2,3].map(p => ({ left_transcription: get(`pair_left_${p}`), right: get(`pair_right_${p}`) }));
+        c.feedback = get('feedback');
+      } else if (item.type === 'Complete' && item.subtype === 'reconstruit') {
+        c.audio_transcription = get('audio_transcription');
+        c.texte_complet = get('texte_complet');
+      } else if (item.type === 'Complete' && item.subtype === 'options') {
+        c.texte_complet      = get('texte_complet');
+        c.audio_transcription = get('audio_transcription');
+        const opts = [];
+        for (let oi = 0; oi < 6; oi++) {
+          const v = get(`option_${oi}`);
+          if (v !== undefined && v !== null) opts.push(v);
+        }
+        c.options = opts.filter(Boolean);
+      }
+      return { type: item.type, subtype: item.subtype, content: c };
+    });
+  });
+  return result;
+}
+
+function aiSeqPopulate() {
+  const activities = _aiSeqCollectContent();
+  const totalCount = Object.values(activities).reduce((s, arr) => s + arr.length, 0);
+  if (!totalCount) { alert('Aucune activité à créer.'); return; }
+  if (!confirm(`Cela va ajouter ${totalCount} activité(s) à votre séquence. Continuer ?`)) return;
+
+  // Read DOM order from content board (respects drag-reordering)
+  Object.entries(SEQ_AI_SECTIONS).forEach(([sKey]) => {
+    const container = document.getElementById(`contentSection_${sKey}`);
+    const orderedIds = container
+      ? [...container.querySelectorAll('[data-ex-id]')].map(el => el.dataset.exId)
+      : ((_aiSeqOutline[sKey] || []).map(e => e.id));
+
+    const navList = document.getElementById(`nav-exercises-${sKey}`);
+    if (navList) navList.style.display = 'block';
+    const addBtn = document.getElementById(`add-btn-${sKey}`);
+    if (addBtn) addBtn.style.display = 'block';
+
+    orderedIds.forEach(exId => {
+      const item = (activities[sKey] || []).find(a => {
+        // match by position in outline since activities array mirrors outline order
+        const idx = (_aiSeqOutline[sKey] || []).findIndex(e => e.id === exId);
+        return idx >= 0 && activities[sKey][idx] === a;
+      }) || (activities[sKey] || []).find((_, idx) =>
+        (_aiSeqOutline[sKey] || [])[idx]?.id === exId
+      );
+      if (!item) return;
+      addExercice(sKey);
+      const id = `${sKey}_${sections[sKey].count}`;
+      _aiSeqPopulateActivity(id, item, sKey);
+    });
+  });
+
+  hideSeqAiPanel();
+  showSectionOverview('S1');
+}
+
+function _aiSeqPopulateActivity(id, item, sKey) {
+  const c = item.content || {};
+  const setVal = (elId, val) => {
+    const el = document.getElementById(elId);
+    if (el && val !== undefined && val !== null) el.value = val;
+  };
+
+  // Set type
+  setVal(`type_${id}`, item.type);
+  updateFields(id);
+
+  if (item.type === 'Leçon') {
+    setVal(`lessonType_${id}`, item.subtype || 'simple');
+    updateLessonFields(id);
+    setVal(`lessonExprFr_${id}`, c.expression_fr);
+    setVal(`lessonExprEn_${id}`, c.expression_en);
+    setVal(`lessonExFr_${id}`,   c.exemple_fr);
+    setVal(`lessonExEn_${id}`,   c.exemple_en);
+
+  } else if (item.type === 'True or false') {
+    setVal(`consigne_${id}`, activityTypesConfig['True or false'].defaultConsigne);
+    setVal(`enonce_${id}`,   c.affirmation);
+    setVal(`truth_${id}`,    c.bonne_reponse);
+
+  } else if (item.type === 'QCU') {
+    setVal(`consigne_${id}`, activityTypesConfig['QCU'].defaultConsigne);
+    setVal(`enonce_${id}`,   c.question);
+    setVal(`qcuA_${id}`,     (c.answers || {}).A);
+    setVal(`qcuB_${id}`,     (c.answers || {}).B);
+    setVal(`qcuC_${id}`,     (c.answers || {}).C);
+    setVal(`qcuD_${id}`,     (c.answers || {}).D);
+    const qcuRadio = document.getElementById(`qcuRadio${c.bonne_reponse || 'A'}_${id}`);
+    if (qcuRadio) qcuRadio.checked = true;
+
+  } else if (item.type === 'QCM') {
+    setVal(`consigne_${id}`, activityTypesConfig['QCM'].defaultConsigne);
+    setVal(`enonce_${id}`,   c.question);
+    ['A','B','C','D'].forEach(l => {
+      setVal(`qcm${l}_${id}`, (c.answers || {})[l]);
+      const chk = document.getElementById(`qcmCheck_${l}_${id}`);
+      if (chk) chk.checked = (c.correct || []).includes(l);
+    });
+
+  } else if (item.type === 'Matching') {
+    setVal(`matchType_${id}`, item.subtype || 'texte-texte');
+    updateMatchingFields(id);
+    setVal(`consigne_${id}`, activityTypesConfig['Matching'].defaultConsigne);
+    if (item.subtype === 'texte-texte') {
+      (c.pairs || []).forEach((pair, p) => {
+        setVal(`matchText_${id}_L${p + 1}`, pair.left);
+        setVal(`matchText_${id}_R${p + 1}`, pair.right);
+      });
+    } else if (item.subtype === 'audio-texte') {
+      (c.pairs || []).forEach((pair, p) => {
+        setVal(`matchText_${id}_R${p + 1}`, pair.right);
+      });
+    } else if (item.subtype === 'audio-audio') {
+      // Both sides are audio — only transcriptions available; user records the actual files
+      // No text fields to set for audio-audio matching
+    }
+
+  } else if (item.type === 'Complete') {
+    setVal(`completeType_${id}`, item.subtype || 'options');
+    updateCompleteFields(id);
+    setVal(`consigne_${id}`, activityTypesConfig['Complete'].defaultConsigne);
+    setVal(`texte_${id}`, c.texte_complet);
+    if (item.subtype === 'options') {
+      (c.options || []).forEach((opt, oi) => setVal(`opt${oi + 1}_${id}`, opt));
+    } else if (item.subtype === 'reconstruit') {
+      const texteEl = document.getElementById(`texte_${id}`);
+      if (texteEl) texteEl.dispatchEvent(new Event('input'));
+    }
+
+  } else if (item.type === 'Flashcard') {
+    const cards = (c.cards && c.cards.length > 0) ? c.cards : [{ front_text: c.front_text, back_text: c.back_text }];
+    // Populate the already-created exercise with the first card
+    setVal(`flashcardType_${id}`, item.subtype || 'courte');
+    updateFlashcardFields(id);
+    setVal(`consigne_${id}`, activityTypesConfig['Flashcard']?.defaultConsigne || '');
+    setVal(`front_${id}`, cards[0].front_text);
+    setVal(`back_${id}`, cards[0].back_text);
+    // Add one extra exercise per additional card
+    if (sKey && cards.length > 1) {
+      cards.slice(1).forEach(card => {
+        addExercice(sKey);
+        const extraId = `${sKey}_${sections[sKey].count}`;
+        setVal(`type_${extraId}`, 'Flashcard');
+        updateFields(extraId);
+        setVal(`flashcardType_${extraId}`, item.subtype || 'courte');
+        updateFlashcardFields(extraId);
+        setVal(`consigne_${extraId}`, activityTypesConfig['Flashcard']?.defaultConsigne || '');
+        setVal(`front_${extraId}`, card.front_text);
+        setVal(`back_${extraId}`, card.back_text);
+      });
+    }
+
+  } else if (item.type === 'Leçon' && item.subtype === 'complexe') {
+    setVal(`lessonType_${id}`, 'complexe');
+    updateLessonFields(id);
+    const cols = c.nb_cols || (c.headers?.length) || 1;
+    const rows = c.nb_rows || (c.lignes?.length) || 1;
+    setVal(`lessonConsigne_${id}`, activityTypesConfig['Leçon']?.defaultConsigne || '');
+    const qlEditor = document.querySelector(`#lessonTexte_${id} .ql-editor`);
+    if (qlEditor) qlEditor.innerHTML = c.texte_html || '';
+    setVal(`lessonHeader_${id}`, (c.has_header && (c.headers||[]).length > 0) ? 'oui' : 'non');
+    setVal(`lessonCols_${id}`, cols);
+    setVal(`lessonRows_${id}`, rows);
+    requestAnimationFrame(() => {
+      buildLessonGrid(id);
+      requestAnimationFrame(() => {
+        (c.headers || []).forEach((h, i) => setVal(`lessonHeaderText_${id}_${i + 1}`, h));
+        (c.lignes || []).forEach((ligne, r) => {
+          (ligne.colonnes || ligne.Colonnes || []).forEach((col, cc) => {
+            setVal(`lessonCell_${id}_${r + 1}_${cc + 1}`, col.texte || col.Texte || '');
+          });
+        });
+      });
+    });
+
+  } else if (item.type === 'Media') {
+    setVal(`mediaType_${id}`, c.media_type || 'image_audio');
+    updateMediaTypeFields(id);
+    const transcField = c.media_type === 'video' ? `videoTranscription_${id}` : `audioTranscription_${id}`;
+    setVal(transcField, c.transcription);
+
+  } else if (item.type === 'Dialogue') {
+    setVal(`consigne_${id}`, c.consigne);
+    requestAnimationFrame(() => {
+      (c.script || []).forEach(line => {
+        addActivityDialogueLine(id, line.nom || line.Nom || '', line.texte || line.Texte || '');
+      });
+    });
+  }
+
+  // Set audio transcription if present (True or false, QCU, QCM, Matching audio-*, Complete)
+  if (c.audio_transcription) {
+    const audioSw = document.getElementById(`audioSwitch_${id}`);
+    if (audioSw && !audioSw.checked) {
+      audioSw.checked = true;
+      toggleAudioField(id);
+    }
+    setVal(`audioTranscription_${id}`, c.audio_transcription);
+  }
+}
+
+
+/*  ======  VALIDATION & FIELD LIMITS  ======  */
+
+let _exportValidationBypassed = false;
+
+function _audioKeyFromId(id) {
+  return id.replace(/_(\d+)$/, (_, n) => '_EX' + n);
+}
+
+function validateActivity(id) {
+  const issues = [];
+  const type = document.getElementById(`type_${id}`)?.value;
+  if (!type) return ['Type non sélectionné'];
+
+  const val = elId => document.getElementById(elId)?.value?.trim() || '';
+  const audioOn = document.getElementById(`audioSwitch_${id}`)?.checked;
+  const audioKey = _audioKeyFromId(id);
+
+  if (audioOn) {
+    if (!audiosData[audioKey]?.main) issues.push('Toggle audio activé — aucun fichier audio chargé');
+    if (!val(`audioTranscription_${id}`)) issues.push('Transcription audio manquante');
+  }
+
+  const imageOn = document.getElementById(`imageSwitch_${id}`)?.checked;
+  if (imageOn && !imagesData[audioKey]) issues.push('Toggle image activé — aucune image chargée');
+
+  const videoOn = document.getElementById(`videoSwitch_${id}`)?.checked;
+  if (videoOn && !videosData[audioKey]) issues.push('Toggle vidéo activé — aucune vidéo chargée');
+
+  if (type === 'True or false') {
+    if (!val(`enonce_${id}`)) issues.push('Affirmation manquante');
+
+  } else if (type === 'QCU') {
+    if (!val(`enonce_${id}`)) issues.push('Question manquante');
+    const filledQcu = ['A','B','C','D'].filter(l => val(`qcu${l}_${id}`));
+    if (filledQcu.length < 2) issues.push(`Au moins 2 réponses requises (${filledQcu.length}/4 remplie${filledQcu.length > 1 ? 's' : ''})`);
+
+  } else if (type === 'QCM') {
+    if (!val(`enonce_${id}`)) issues.push('Question manquante');
+    const filledQcm = ['A','B','C','D'].filter(l => val(`qcm${l}_${id}`));
+    if (filledQcm.length < 2) issues.push(`Au moins 2 réponses requises (${filledQcm.length}/4 remplie${filledQcm.length > 1 ? 's' : ''})`);
+
+  } else if (type === 'Matching') {
+    const matchType = document.getElementById(`matchType_${id}`)?.value || '';
+    let filledPairs = 0;
+    for (let i = 1; i <= 4; i++) {
+      if (matchType === 'texte-texte') {
+        if (val(`matchText_${id}_L${i}`) && val(`matchText_${id}_R${i}`)) filledPairs++;
+      } else if (matchType === 'audio-texte') {
+        if (val(`matchText_${id}_R${i}`)) filledPairs++;
+      } else {
+        filledPairs++; // audio-audio: pairs are audio files, not text
+      }
+    }
+    if (matchType !== 'audio-audio' && filledPairs < 2) issues.push(`Au moins 2 paires requises (${filledPairs} remplie${filledPairs > 1 ? 's' : ''})`);
+
+  } else if (type === 'Complete') {
+    const texte = val(`texte_${id}`);
+    if (!texte) issues.push('Texte à compléter manquant');
+    else if (!texte.includes('#')) issues.push('Texte sans mot masqué — utiliser #mot#');
+    if (!val(`opt1_${id}`)) issues.push('Première option manquante');
+
+  } else if (type === 'Flashcard') {
+    if (!val(`front_${id}`)) issues.push('Recto manquant');
+    if (!val(`back_${id}`)) issues.push('Verso manquant');
+
+  } else if (type === 'Leçon') {
+    if (!val(`lessonExprFr_${id}`)) issues.push('Expression (FR) manquante');
+    if (!val(`lessonExprEn_${id}`)) issues.push('Traduction manquante');
+
+  } else if (type === 'Media') {
+    const hasAudio = !!audiosData[audioKey];
+    const hasVideo = !!(typeof videosData !== 'undefined' && videosData[audioKey]);
+    if (!hasAudio && !hasVideo) issues.push('Aucun fichier média chargé');
+
+  } else if (type === 'Dialogue') {
+    const lines = document.querySelectorAll(`#dialogueLines_${id} .dialogue-line`);
+    if (!lines || lines.length < 2) issues.push('Au moins 2 répliques requises');
+  }
+
+  // Feedback check (for types that have it)
+  if (['True or false','QCU','QCM','Matching','Complete'].includes(type)) {
+    const fbText = document.querySelector(`#feedbackContainer_${id} .ql-editor`)?.innerText?.trim();
+    if (!fbText) issues.push('Feedback manquant');
+  }
+
+  return issues;
+}
+
+function updateActivityWarningBadge(id) {
+  const issues = validateActivity(id);
+  const show = issues.length > 0;
+  const title = issues.join('\n');
+
+  // Header badge (inside exercise card)
+  const badge = document.getElementById(`validBadge_${id}`);
+  if (badge) {
+    badge.textContent = '!';
+    badge.style.display = show ? '' : 'none';
+    badge.title = title;
+  }
+
+  // Sidebar badge
+  const sidebarBadge = document.getElementById(`sidebarValidBadge_${id}`);
+  if (sidebarBadge) {
+    sidebarBadge.textContent = '!';
+    sidebarBadge.style.display = show ? '' : 'none';
+    sidebarBadge.title = title;
+  }
+
+  _markInvalidFields(id);
+}
+
+function validateAllSequence() {
+  const warnings = [];
+  Object.entries(sections).forEach(([sKey, { count }]) => {
+    for (let i = 1; i <= count; i++) {
+      const id = `${sKey}_${i}`;
+      if (!document.getElementById(`exo_${id}`)) continue;
+      const issues = validateActivity(id);
+      if (issues.length > 0) warnings.push({ label: `${sKey} – Exercice ${i}`, issues });
+    }
+  });
+  return warnings;
+}
+
+function showValidationWarning(warnings, onExport) {
+  let html = '';
+  warnings.forEach(({ label, issues }) => {
+    html += `<div class="mb-3"><strong>${_esc(label)}</strong><ul class="mb-0 ps-3 mt-1">`;
+    issues.forEach(i => { html += `<li class="small text-danger">${_esc(i)}</li>`; });
+    html += '</ul></div>';
+  });
+  document.getElementById('validationWarningList').innerHTML = html;
+  const modal = new bootstrap.Modal(document.getElementById('validationWarningModal'));
+  document.getElementById('validationExportAnywayBtn').onclick = () => {
+    modal.hide();
+    onExport();
+  };
+  modal.show();
+}
+
+function attachFieldLimits(id) {
+  const targets = [
+    { elId: `enonce_${id}`,         key: 'enonce' },
+    { elId: `qcuA_${id}`,           key: 'answer' },
+    { elId: `qcuB_${id}`,           key: 'answer' },
+    { elId: `qcuC_${id}`,           key: 'answer' },
+    { elId: `qcuD_${id}`,           key: 'answer' },
+    { elId: `qcmA_${id}`,           key: 'answer' },
+    { elId: `qcmB_${id}`,           key: 'answer' },
+    { elId: `qcmC_${id}`,           key: 'answer' },
+    { elId: `qcmD_${id}`,           key: 'answer' },
+    { elId: `matchText_${id}_L1`,   key: 'matching_text' },
+    { elId: `matchText_${id}_L2`,   key: 'matching_text' },
+    { elId: `matchText_${id}_L3`,   key: 'matching_text' },
+    { elId: `matchText_${id}_L4`,   key: 'matching_text' },
+    { elId: `matchText_${id}_R1`,   key: 'matching_text' },
+    { elId: `matchText_${id}_R2`,   key: 'matching_text' },
+    { elId: `matchText_${id}_R3`,   key: 'matching_text' },
+    { elId: `matchText_${id}_R4`,   key: 'matching_text' },
+    { elId: `texte_${id}`,          key: 'complete_text' },
+    { elId: `opt1_${id}`,           key: 'complete_option' },
+    { elId: `opt2_${id}`,           key: 'complete_option' },
+    { elId: `opt3_${id}`,           key: 'complete_option' },
+    { elId: `opt4_${id}`,           key: 'complete_option' },
+    { elId: `opt5_${id}`,           key: 'complete_option' },
+    { elId: `opt6_${id}`,           key: 'complete_option' },
+    { elId: `front_${id}`,          key: 'flashcard_front' },
+    { elId: `back_${id}`,           key: 'flashcard_back' },
+  ];
+  targets.forEach(({ elId, key }) => {
+    const el = document.getElementById(elId);
+    const lim = FIELD_LIMITS[key];
+    if (!el || !lim) return;
+    // Remove existing counter hint if any
+    document.getElementById(`flhint_${elId}`)?.remove();
+    const hint = document.createElement('div');
+    hint.id = `flhint_${elId}`;
+    hint.className = 'small mb-1';
+    hint.style.display = 'none';
+    el.insertAdjacentElement('afterend', hint);
+    const update = () => {
+      const len = el.value.length;
+      const over = len > lim;
+      const near = len > lim * 0.85;
+      // Orange outline for recommendation (uses outline so it doesn't conflict with red border for missing fields)
+      el.style.outline = over ? '2px solid #fd7e14' : near ? '2px solid rgba(253,193,14,0.6)' : '';
+      // Counter hint — only visible when near or over limit
+      if (near) {
+        hint.textContent = `${len} / ${lim} car. recommandés`;
+        hint.className = `small mb-1 ${over ? 'text-warning fw-semibold' : 'text-warning'}`;
+        hint.style.display = '';
+      } else {
+        hint.style.display = 'none';
+      }
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('input', () => updateActivityWarningBadge(id));
+    update();
+  });
+}
+
+// Apply red border to empty required fields, remove from valid ones
+function _markInvalidFields(id) {
+  const type = document.getElementById(`type_${id}`)?.value;
+  const val = elId => document.getElementById(elId)?.value?.trim() || '';
+  const audioKey = _audioKeyFromId(id);
+
+  // All fields that could be marked invalid for this exercise
+  const allFields = [
+    `enonce_${id}`, `audioTranscription_${id}`,
+    `qcuA_${id}`, `qcuB_${id}`, `qcuC_${id}`, `qcuD_${id}`,
+    `qcmA_${id}`, `qcmB_${id}`, `qcmC_${id}`, `qcmD_${id}`,
+    `matchText_${id}_L1`, `matchText_${id}_L2`, `matchText_${id}_L3`, `matchText_${id}_L4`,
+    `matchText_${id}_R1`, `matchText_${id}_R2`, `matchText_${id}_R3`, `matchText_${id}_R4`,
+    `texte_${id}`, `opt1_${id}`,
+    `front_${id}`, `back_${id}`,
+    `lessonExprFr_${id}`, `lessonExprEn_${id}`,
+  ];
+  // First clear all text fields
+  allFields.forEach(elId => {
+    const el = document.getElementById(elId);
+    if (el) el.classList.remove('border', 'border-danger');
+  });
+
+  // Clear media wrapper highlights
+  [`audioButtonsWrapper_${id}`, `imageButtonsWrapper_${id}`, `videoButtonsWrapper_${id}`,
+   `audioContainer_${id}`, `imageContainer_${id}`].forEach(elId => {
+    const el = document.getElementById(elId);
+    if (el) el.classList.remove('border', 'border-danger', 'rounded', 'p-1');
+  });
+
+  // Clear feedback highlight
+  const fbContainer = document.getElementById(`feedbackContainer_${id}`);
+  if (fbContainer) fbContainer.classList.remove('border', 'border-danger', 'rounded', 'p-1');
+
+  if (!type) return;
+
+  const markMissing = elId => {
+    if (!val(elId)) {
+      const el = document.getElementById(elId);
+      if (el) el.classList.add('border', 'border-danger');
+    }
+  };
+
+  const markMediaMissing = elId => {
+    const el = document.getElementById(elId);
+    if (el) el.classList.add('border', 'border-danger', 'rounded', 'p-1');
+  };
+
+  const audioOn = document.getElementById(`audioSwitch_${id}`)?.checked;
+  if (audioOn) {
+    markMissing(`audioTranscription_${id}`);
+    if (!audiosData[audioKey]?.main) markMediaMissing(`audioButtonsWrapper_${id}`);
+  }
+
+  const imageOn = document.getElementById(`imageSwitch_${id}`)?.checked;
+  if (imageOn && !imagesData[audioKey]) markMediaMissing(`imageButtonsWrapper_${id}`);
+
+  const videoOn = document.getElementById(`videoSwitch_${id}`)?.checked;
+  if (videoOn && !videosData[audioKey]) markMediaMissing(`videoButtonsWrapper_${id}`);
+
+  if (type === 'Media') {
+    const mediaType = document.getElementById(`mediaType_${id}`)?.value;
+    if (mediaType === 'video') {
+      if (!videosData[audioKey]) markMediaMissing(`videoButtonsWrapper_${id}`);
+    } else if (mediaType === 'image_audio') {
+      if (!imagesData[audioKey]) markMediaMissing(`imageContainer_${id}`);
+      if (!audiosData[audioKey]) markMediaMissing(`audioContainer_${id}`);
+    }
+  } else if (type === 'True or false') {
+    markMissing(`enonce_${id}`);
+  } else if (type === 'QCU') {
+    markMissing(`enonce_${id}`);
+    const filledQcu = ['A','B','C','D'].filter(l => val(`qcu${l}_${id}`));
+    if (filledQcu.length < 2) ['A','B','C','D'].forEach(l => markMissing(`qcu${l}_${id}`));
+  } else if (type === 'QCM') {
+    markMissing(`enonce_${id}`);
+    const filledQcm = ['A','B','C','D'].filter(l => val(`qcm${l}_${id}`));
+    if (filledQcm.length < 2) ['A','B','C','D'].forEach(l => markMissing(`qcm${l}_${id}`));
+  } else if (type === 'Matching') {
+    const matchType = document.getElementById(`matchType_${id}`)?.value || '';
+    let filledPairs = 0;
+    for (let i = 1; i <= 4; i++) {
+      if (matchType === 'texte-texte' && val(`matchText_${id}_L${i}`) && val(`matchText_${id}_R${i}`)) filledPairs++;
+      else if (matchType === 'audio-texte' && val(`matchText_${id}_R${i}`)) filledPairs++;
+    }
+    if (matchType !== 'audio-audio' && filledPairs < 2) {
+      for (let i = 1; i <= 4; i++) {
+        if (matchType === 'texte-texte') { markMissing(`matchText_${id}_L${i}`); markMissing(`matchText_${id}_R${i}`); }
+        else if (matchType === 'audio-texte') { markMissing(`matchText_${id}_R${i}`); }
+      }
+    }
+  } else if (type === 'Complete') {
+    markMissing(`texte_${id}`);
+    markMissing(`opt1_${id}`);
+  } else if (type === 'Flashcard') {
+    markMissing(`front_${id}`);
+    markMissing(`back_${id}`);
+  } else if (type === 'Leçon') {
+    markMissing(`lessonExprFr_${id}`);
+    markMissing(`lessonExprEn_${id}`);
+  }
+
+  // Feedback
+  if (['True or false','QCU','QCM','Matching','Complete'].includes(type)) {
+    const fbText = document.querySelector(`#feedbackContainer_${id} .ql-editor`)?.innerText?.trim();
+    if (!fbText && fbContainer) fbContainer.classList.add('border', 'border-danger', 'rounded', 'p-1');
+  }
+}

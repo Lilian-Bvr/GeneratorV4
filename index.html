@@ -33,80 +33,334 @@
 </head>
 <body>
 
-  <!-- ===== LOGIN GATE — blocks app until authenticated ===== -->
-  <div id="appLoginGate" style="
-    display: flex;
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: #f0f2f5;
-    align-items: center;
-    justify-content: center;
-  ">
-    <div style="background:white; border-radius:16px; padding:40px 36px; max-width:400px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.12);">
-      <div style="text-align:center; margin-bottom:28px;">
-        <div style="font-size:36px; margin-bottom:10px;">🧩</div>
-        <h4 style="margin:0; color:#222;">Générateur de module Storyline</h4>
-        <p style="color:#888; margin:8px 0 0; font-size:14px;">Connectez-vous pour accéder à l'application.</p>
+  <!-- ===== LOGIN GATE ===== -->
+  <div id="appLoginGate" style="display:flex;position:fixed;inset:0;z-index:9999;background:#f0f2f5;align-items:center;justify-content:center;">
+    <div style="background:white;border-radius:16px;padding:40px 36px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.12);">
+      <div style="text-align:center;margin-bottom:28px;">
+        <div style="font-size:36px;margin-bottom:10px;">🧩</div>
+        <h4 style="margin:0;color:#222;">Générateur de module Storyline</h4>
+        <p style="color:#888;margin:8px 0 0;font-size:14px;">Connectez-vous pour accéder à l'application.</p>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">Email</label>
+        <input type="email" id="gateEmailInput" class="form-control" placeholder="votre@email.com"
+          onkeydown="if(event.key==='Enter') document.getElementById('gatePasswordInput').focus()">
       </div>
       <div class="mb-3">
         <label class="form-label fw-bold small">Mot de passe</label>
-        <input type="password" id="gatePasswordInput" class="form-control"
-          placeholder="Mot de passe entreprise"
+        <input type="password" id="gatePasswordInput" class="form-control" placeholder="••••••••"
           onkeydown="if(event.key==='Enter') handleGateLogin()">
       </div>
       <div id="gateLoginError" class="text-danger small mb-2" style="display:none;"></div>
       <button class="btn btn-primary w-100" id="gateLoginBtn" onclick="handleGateLogin()">
-        <i class="bi bi-box-arrow-in-right"></i> Se connecter
+        <i class="bi bi-box-arrow-in-right me-1"></i> Se connecter
       </button>
     </div>
   </div>
 
-  <!-- Mode Selector (shown after login) -->
-  <div id="appModeSelector" style="
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 9998;
-    background: #f0f2f5;
-    align-items: center;
-    justify-content: center;
-  ">
-    <div style="max-width:680px; width:90%; text-align:center;">
-      <div style="font-size:36px; margin-bottom:12px;">🧩</div>
-      <h3 style="margin:0 0 8px; color:#222;">Que souhaitez-vous créer ?</h3>
-      <p style="color:#888; margin:0 0 36px; font-size:15px;">Choisissez un mode pour commencer.</p>
-      <div style="display:flex; gap:24px; justify-content:center; flex-wrap:wrap;">
+  <!-- ===== PROJECT BROWSER ===== -->
+  <div id="appProjectBrowser" style="display:none;position:fixed;inset:0;z-index:9998;background:#f0f2f5;overflow-y:auto;">
+    <div class="container py-4" style="max-width:1100px;">
 
-        <div onclick="selectMode('sequenceur')" style="
-          flex:1; min-width:220px; max-width:280px;
-          background:white; border-radius:16px; padding:36px 24px;
-          box-shadow:0 8px 32px rgba(0,0,0,0.10);
-          cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;
-          border:2px solid transparent;
-        " onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 16px 40px rgba(0,0,0,0.14)'"
-           onmouseout="this.style.transform='';this.style.boxShadow='0 8px 32px rgba(0,0,0,0.10)'">
-          <div style="font-size:40px; margin-bottom:16px;">📚</div>
-          <h5 style="margin:0 0 8px; color:#222;">Créer une séquence</h5>
-          <p style="margin:0; color:#888; font-size:13px;">Construisez un module complet avec exercices, audios et vidéos.</p>
+      <!-- Header -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h3 class="mb-0">🧩 Générateur de module Storyline</h3>
+          <p class="text-muted mb-0 small" id="pbWelcome"></p>
         </div>
-
-        <div onclick="selectMode('cartes')" style="
-          flex:1; min-width:220px; max-width:280px;
-          background:white; border-radius:16px; padding:36px 24px;
-          box-shadow:0 8px 32px rgba(0,0,0,0.10);
-          cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;
-          border:2px solid transparent;
-        " onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 16px 40px rgba(0,0,0,0.14)'"
-           onmouseout="this.style.transform='';this.style.boxShadow='0 8px 32px rgba(0,0,0,0.10)'">
-          <div style="font-size:40px; margin-bottom:16px;">🃏</div>
-          <h5 style="margin:0 0 8px; color:#222;">Créer un jeu de cartes</h5>
-          <p style="margin:0; color:#888; font-size:13px;">Générez un jeu de flashcards prêt à l'emploi.</p>
+        <div class="d-flex gap-2 align-items-center">
+          <span id="pbAdminBadge" class="badge bg-warning text-dark" style="display:none;">Admin</span>
+          <button class="btn btn-sm btn-outline-secondary" onclick="handleLogout()">
+            <i class="bi bi-box-arrow-right me-1"></i> Déconnexion
+          </button>
         </div>
+      </div>
 
+      <!-- Admin tabs -->
+      <ul class="nav nav-tabs mb-4" id="pbTabs">
+        <li class="nav-item">
+          <a class="nav-link active" href="#" onclick="pbShowTab('projects');return false;">
+            <i class="bi bi-folder2 me-1"></i> Projets
+          </a>
+        </li>
+        <li class="nav-item" id="pbAdminTab" style="display:none;">
+          <a class="nav-link" href="#" onclick="pbShowTab('users');return false;">
+            <i class="bi bi-people me-1"></i> Utilisateurs
+          </a>
+        </li>
+        <li class="nav-item" id="pbModelesTab" style="display:none;">
+          <a class="nav-link" href="#" onclick="pbShowTab('modeles');return false;">
+            <i class="bi bi-archive me-1"></i> Modèles
+          </a>
+        </li>
+      </ul>
+
+      <!-- PROJECTS TAB -->
+      <div id="pbTabProjects">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="mb-0">Mes projets</h5>
+          <button class="btn btn-primary btn-sm" id="pbNewProjectBtn" style="display:none;"
+                  onclick="pbOpenNewProjectModal()">
+            <i class="bi bi-plus-circle me-1"></i> Nouveau projet
+          </button>
+        </div>
+        <div id="pbProjectList" class="row g-3">
+          <div class="col-12 text-center text-muted py-5">
+            <div class="spinner-border spinner-border-sm me-2"></div> Chargement…
+          </div>
+        </div>
+      </div>
+
+      <!-- MODELES TAB (admin only) -->
+      <div id="pbTabModeles" style="display:none;">
+        <h5 class="mb-3">Mettre à jour les modèles</h5>
+        <div class="d-flex flex-column gap-3" style="max-width:500px;">
+
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-1">Modele.zip</h6>
+              <p class="text-muted small mb-2">Modèle principal (séquence) — <span id="modeleDate_Modele" class="text-muted">…</span></p>
+              <div class="d-flex align-items-center gap-2">
+                <input type="file" accept=".zip" id="modeleFileInput_Modele" style="display:none;"
+                  onchange="pbUploadModele('Modele', this)">
+                <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('modeleFileInput_Modele').click()">
+                  <i class="bi bi-folder2-open me-1"></i> Choisir un fichier
+                </button>
+                <span id="modeleFileName_Modele" class="text-muted small">Aucun fichier sélectionné</span>
+              </div>
+              <div id="modeleStatus_Modele" class="mt-2"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-1">Modele_Flashcards.zip</h6>
+              <p class="text-muted small mb-2">Modèle jeu de cartes — <span id="modeleDate_Modele_Flashcards" class="text-muted">…</span></p>
+              <div class="d-flex align-items-center gap-2">
+                <input type="file" accept=".zip" id="modeleFileInput_Modele_Flashcards" style="display:none;"
+                  onchange="pbUploadModele('Modele_Flashcards', this)">
+                <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('modeleFileInput_Modele_Flashcards').click()">
+                  <i class="bi bi-folder2-open me-1"></i> Choisir un fichier
+                </button>
+                <span id="modeleFileName_Modele_Flashcards" class="text-muted small">Aucun fichier sélectionné</span>
+              </div>
+              <div id="modeleStatus_Modele_Flashcards" class="mt-2"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-1">Modele_QuickPreview.zip</h6>
+              <p class="text-muted small mb-2">Modèle aperçu rapide — <span id="modeleDate_Modele_QuickPreview" class="text-muted">…</span></p>
+              <div class="d-flex align-items-center gap-2">
+                <input type="file" accept=".zip" id="modeleFileInput_Modele_QuickPreview" style="display:none;"
+                  onchange="pbUploadModele('Modele_QuickPreview', this)">
+                <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('modeleFileInput_Modele_QuickPreview').click()">
+                  <i class="bi bi-folder2-open me-1"></i> Choisir un fichier
+                </button>
+                <span id="modeleFileName_Modele_QuickPreview" class="text-muted small">Aucun fichier sélectionné</span>
+              </div>
+              <div id="modeleStatus_Modele_QuickPreview" class="mt-2"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- USERS TAB (admin only) -->
+      <div id="pbTabUsers" style="display:none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="mb-0">Utilisateurs</h5>
+          <button class="btn btn-primary btn-sm" onclick="pbOpenNewUserModal()">
+            <i class="bi bi-person-plus me-1"></i> Nouvel utilisateur
+          </button>
+        </div>
+        <div id="pbUserList"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== FILE BROWSER (inside a project) ===== -->
+  <div id="appFileBrowser" style="display:none;position:fixed;inset:0;z-index:9997;background:#f0f2f5;overflow-y:auto;">
+    <div class="container py-4" style="max-width:1100px;">
+
+      <div class="d-flex align-items-center gap-3 mb-4">
+        <button class="btn btn-sm btn-outline-secondary" onclick="fbBack()">
+          <i class="bi bi-arrow-left me-1"></i> Projets
+        </button>
+        <div>
+          <h4 class="mb-0" id="fbProjectName">Projet</h4>
+          <p class="text-muted small mb-0" id="fbProjectDesc"></p>
+        </div>
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-primary btn-sm" onclick="fbNewFile()">
+            <i class="bi bi-plus-circle me-1"></i> Nouveau fichier
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="card mb-3">
+        <div class="card-body py-2">
+          <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+              <input type="text" id="fbSearch" class="form-control form-control-sm"
+                     placeholder="🔍 Rechercher par nom…" oninput="fbApplyFilters()">
+            </div>
+            <div class="col-md-2">
+              <select id="fbFilterType" class="form-select form-select-sm" onchange="fbApplyFilters()">
+                <option value="">Tous les types</option>
+                <option value="sequence">Séquence</option>
+                <option value="flashcards">Flashcards</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <select id="fbFilterLevel" class="form-select form-select-sm" onchange="fbApplyFilters()">
+                <option value="">Tous les niveaux</option>
+                <option value="1">Niveau 1</option>
+                <option value="2">Niveau 2</option>
+                <option value="3">Niveau 3</option>
+                <option value="4">Niveau 4</option>
+                <option value="5">Niveau 5</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <select id="fbFilterAuthor" class="form-select form-select-sm" onchange="fbApplyFilters()">
+                <option value="">Tous les auteurs</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-sm btn-outline-secondary w-100" onclick="fbClearFilters()">
+                <i class="bi bi-x-circle me-1"></i> Réinitialiser
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- File list -->
+      <div id="fbFileList">
+        <div class="text-center text-muted py-5">
+          <div class="spinner-border spinner-border-sm me-2"></div> Chargement…
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== MODAL: New Project ===== -->
+  <div class="modal fade" id="pbNewProjectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Nouveau projet</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold">Nom du projet <span class="text-danger">*</span></label>
+            <input type="text" id="pbNewProjectName" class="form-control" placeholder="Ex: Flashcards Économie">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Description <span class="fw-normal text-muted">(optionnel)</span></label>
+            <textarea id="pbNewProjectDesc" class="form-control" rows="2"
+                      placeholder="Brève description du projet…"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Assigner des utilisateurs</label>
+            <div id="pbNewProjectUsers" class="d-flex flex-wrap gap-2"></div>
+          </div>
+          <div id="pbNewProjectError" class="text-danger small" style="display:none;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="button" class="btn btn-primary" onclick="pbCreateProject()">Créer</button>
+        </div>
       </div>
     </div>
   </div>
+
+  <!-- ===== MODAL: New/Edit User ===== -->
+  <div class="modal fade" id="pbUserModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="pbUserModalTitle">Nouvel utilisateur</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold">Nom complet <span class="text-danger">*</span></label>
+            <input type="text" id="pbUserName" class="form-control" placeholder="Prénom Nom">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Email <span class="text-danger">*</span></label>
+            <input type="email" id="pbUserEmail" class="form-control" placeholder="prenom@example.com">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold" id="pbUserPasswordLabel">Mot de passe <span class="text-danger">*</span></label>
+            <input type="password" id="pbUserPassword" class="form-control" placeholder="Min. 8 caractères">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Rôle</label>
+            <select id="pbUserRole" class="form-select">
+              <option value="user">Utilisateur</option>
+              <option value="admin">Administrateur</option>
+            </select>
+          </div>
+          <div id="pbUserError" class="text-danger small" style="display:none;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="button" class="btn btn-primary" id="pbUserSaveBtn" onclick="pbSaveUser()">Créer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: New File (choose type before opening editor) ===== -->
+  <div class="modal fade" id="fbNewFileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Nouveau fichier</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold">Nom <span class="text-danger">*</span></label>
+            <input type="text" id="fbNewFileName" class="form-control" placeholder="Ex: Vocabulaire banque S1">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Type</label>
+            <select id="fbNewFileType" class="form-select">
+              <option value="sequence">Séquence</option>
+              <option value="flashcards">Flashcards</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Niveau</label>
+            <select id="fbNewFileLevel" class="form-select">
+              <option value="0">— Non défini —</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+          </div>
+          <div id="fbNewFileError" class="text-danger small" style="display:none;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="button" class="btn btn-primary" onclick="fbCreateNewFile()">Créer et ouvrir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- appModeSelector removed — replaced by project browser -->
 
   <!-- Header -->
   <nav class="navbar navbar-light bg-light px-3 mb-0">
@@ -114,8 +368,11 @@
     <div class="d-flex align-items-center gap-3">
       <div id="companyLoggedBadge" style="display:none;" class="d-flex align-items-center gap-2">
         <span class="badge bg-success d-flex align-items-center gap-1">
-          <i class="bi bi-building"></i> <span id="companyNameLabel"></span>
+          <i class="bi bi-person-circle me-1"></i> <span id="companyNameLabel"></span>
         </span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="showProjectBrowser()" title="Retour aux projets">
+          <i class="bi bi-folder2"></i>
+        </button>
         <button class="btn btn-sm btn-outline-secondary" onclick="handleLogout()">
           <i class="bi bi-box-arrow-right"></i>
         </button>
@@ -146,13 +403,14 @@
             <div class="mb-3">
               <label class="form-label fw-bold small text-muted">TITRE DU JEU</label>
               <input type="text" id="cartesDeckTitle" class="form-control form-control-sm"
-                     placeholder="Ex: Vocabulaire bancaire">
+                     placeholder="Ex: Vocabulaire bancaire"
+                     oninput="_onEditorMetaChange()">
             </div>
 
             <!-- Level -->
             <div class="mb-3">
               <label class="form-label fw-bold small text-muted">NIVEAU</label>
-              <select id="cartesDeckLevel" class="form-select form-select-sm">
+              <select id="cartesDeckLevel" class="form-select form-select-sm" onchange="_onEditorMetaChange()">
                 <option value="1">1</option>
                 <option value="2">2</option>
                 <option value="3">3</option>
@@ -225,11 +483,21 @@
                   <span class="section-name">R&#233;vision</span>
                 </div>
                 <ul class="exercise-list" id="cartesNavList_revision" style="display:none;"></ul>
-                <button class="btn btn-sm btn-outline-warning w-100 add-exercise-btn mt-1"
+                <button class="btn btn-sm btn-outline-info w-100 add-exercise-btn mt-1"
                         id="cartesAddBtn_revision" style="display:none;"
                         onclick="addCarteRevision()">
                   <i class="bi bi-plus-circle me-1"></i> Ajouter matching
                 </button>
+                <div id="cartesRandomizeBtnWrapper_revision" class="mt-1" style="display:none;">
+                  <div class="input-group input-group-sm">
+                    <input type="number" id="cartesRandomizeCount_revision" class="form-control"
+                           value="10" min="1" max="10" style="max-width:60px;">
+                    <button class="btn btn-outline-secondary" id="cartesRandomizeBtn_revision"
+                            onclick="randomizeCarteRevision()">
+                      <i class="bi bi-shuffle me-1"></i> Randomiser
+                    </button>
+                  </div>
+                </div>
               </div>
 
             </nav>
@@ -262,8 +530,21 @@
 
             <hr>
 
+            <button class="btn btn-primary w-100 mb-2" onclick="previewCartes()">
+              <i class="bi bi-play-circle me-1"></i> Prévisualiser
+            </button>
+
             <button class="btn btn-success w-100" onclick="exportCartes()">
               <i class="bi bi-download me-1"></i> Exporter
+            </button>
+
+            <button class="btn btn-outline-primary w-100 mt-2" id="saveToProjectBtn_cartes"
+                    onclick="saveToProject()" style="display:none;">
+              <i class="bi bi-cloud-upload me-1"></i> Sauvegarder dans le projet
+            </button>
+
+            <button class="btn btn-outline-secondary w-100 mt-2" onclick="debugCartes()">
+              <i class="bi bi-code-slash me-1"></i> Debug JSON
             </button>
 
           </div>
@@ -300,9 +581,8 @@
 
           <!-- RÉVISION -->
           <div id="cartesTab_revision" style="display:none;">
-            <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="mb-3">
               <h5 class="mb-0">R&#233;vision</h5>
-              <button id="cartesRevisionAddBtn" class="btn btn-primary btn-sm" onclick="addCarteRevision()">+ Matching</button>
             </div>
             <div id="cartesWelcome_revision" class="text-center text-muted py-5">
               <i class="bi bi-card-list" style="font-size:3rem;opacity:0.2;"></i>
@@ -435,7 +715,12 @@
               </div>
               <div class="small text-muted mb-3">Ces phrases apparaîtront sur la face arrière des Flashcards Longues.</div>
               <div id="aiGenSentencesTable"></div>
-              <div class="mt-4 d-flex gap-2 align-items-center">
+              <div class="mt-3 d-flex align-items-center gap-2">
+                <label class="form-label small fw-bold text-muted mb-0 text-nowrap">Matchings Révision</label>
+                <input type="number" id="aiGenRevisionCount" class="form-control form-control-sm"
+                       value="10" min="1" max="10" style="width:70px;">
+              </div>
+              <div class="mt-3 d-flex gap-2 align-items-center">
                 <button class="btn btn-success btn-lg" onclick="aiPopulateCards()">
                   <i class="bi bi-check-circle me-1"></i> Créer les flashcards
                 </button>
@@ -452,6 +737,16 @@
 
   <!-- Main Layout: Sidebar + Content -->
   <div id="appSequenceur" class="container-fluid p-0" style="display:none;">
+
+    <!-- Mobile top bar — hidden on md+ -->
+    <div class="d-flex d-md-none align-items-center px-3 py-2 bg-light border-bottom" id="seqMobileTopbar">
+      <button class="btn btn-sm btn-outline-secondary me-2" onclick="toggleMobileSidebar()" id="seqBurgerBtn">
+        <i class="bi bi-layout-sidebar"></i> Menu
+      </button>
+    </div>
+    <!-- Sidebar overlay (mobile) -->
+    <div class="sidebar-overlay" id="seqSidebarOverlay" onclick="toggleMobileSidebar()"></div>
+
     <div class="row g-0">
       
       <!-- ========================================
@@ -463,14 +758,15 @@
           <!-- Title Input -->
           <div class="mb-4">
             <label class="form-label fw-bold small text-muted">TITRE DU PARCOURS</label>
-            <input type="text" id="chapterTitle" class="form-control form-control-sm" 
-                   placeholder="Ex: Relation client">
+            <input type="text" id="chapterTitle" class="form-control form-control-sm"
+                   placeholder="Ex: Relation client"
+                   oninput="_onEditorMetaChange()">
           </div>
 
           <!-- Level Selector -->
           <div class="mb-4">
             <label class="form-label fw-bold small text-muted">NIVEAU</label>
-            <select id="chapterLevel" class="form-select form-select-sm">
+            <select id="chapterLevel" class="form-select form-select-sm" onchange="_onEditorMetaChange()">
               <option value="1">1</option>
               <option value="2">2</option>
               <option value="3">3</option>
@@ -485,6 +781,25 @@
             <input type="file" id="importZip" accept=".zip" class="form-control form-control-sm" 
                    onchange="importZipProject(event)">
           </div>
+
+          <!-- AI Generation Button -->
+          <button class="btn btn-sm w-100 mb-3" onclick="showSeqAiPanel()"
+                  style="border:2px dashed #0d6efd;color:#0d6efd;background:transparent;border-radius:8px;">
+            <i class="bi bi-stars me-1"></i> Générer avec l'IA
+          </button>
+
+          <button class="btn btn-primary w-100 mb-2" onclick="previewWithLocalServer()">
+            <i class="bi bi-play-circle me-1"></i> Prévisualiser
+          </button>
+
+          <button class="btn btn-success w-100 mb-2" onclick="generatePackage()">
+            <i class="bi bi-download me-1"></i> Exporter
+          </button>
+
+          <button class="btn btn-outline-primary w-100 mb-2" id="saveToProjectBtn_seq"
+                  onclick="saveToProject()" style="display:none;">
+            <i class="bi bi-cloud-upload me-1"></i> Sauvegarder dans le projet
+          </button>
 
           <hr>
 
@@ -581,6 +896,152 @@
       <div class="col-md-9 col-lg-10 main-content">
         <div class="content-area p-4">
           
+          <!-- SEQ AI GENERATION PANEL -->
+          <div id="seqAiPanel" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h5 class="mb-0"><i class="bi bi-stars me-2"></i>Générer une séquence avec l'IA</h5>
+              <button class="btn btn-sm btn-outline-secondary" onclick="hideSeqAiPanel()">
+                <i class="bi bi-arrow-left me-1"></i> Retour
+              </button>
+            </div>
+
+            <!-- STEP 0: Brief + Vocabulary -->
+            <div id="seqAiStep0">
+              <!-- Parameters card -->
+              <div class="card border-0 bg-light p-4 mb-3" style="border-radius:12px;">
+                <div class="row g-3">
+                  <div class="col-md-8">
+                    <label class="form-label fw-bold small text-muted">THÈME DE LA SÉQUENCE</label>
+                    <input type="text" id="seqAiTheme" class="form-control"
+                           placeholder="Ex: La réunion de projet, Les opérations de virement…">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">NIVEAU</label>
+                    <select id="seqAiNiveau" class="form-select">
+                      <option value="1">1 — Grand débutant (A1)</option>
+                      <option value="2">2 — Débutant (A1-A2)</option>
+                      <option value="3" selected>3 — Intermédiaire faible (A2)</option>
+                      <option value="4">4 — Intermédiaire (B1)</option>
+                      <option value="5">5 — Intermédiaire avancé (B1-B2)</option>
+                    </select>
+                  </div>
+                  <div class="col-md-8">
+                    <label class="form-label fw-bold small text-muted">CONTRAINTES SPÉCIFIQUES <span class="fw-normal">(optionnel)</span></label>
+                    <textarea id="seqAiContraintes" class="form-control" rows="2"
+                      placeholder="Ex: focus sur la communication orale, inclure des tournures formelles…"></textarea>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label fw-bold small text-muted">NB. EXPRESSIONS <span class="fw-normal">(optionnel)</span></label>
+                    <input type="number" id="seqAiVocabCount" class="form-control" min="4" max="30"
+                           placeholder="Libre (8–14)">
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label fw-bold small text-muted">DOCUMENT DE RÉFÉRENCE <span class="fw-normal">(optionnel — PDF, Markdown, JSON, XML, CSV…)</span></label>
+                    <input type="file" id="seqAiDocFile" class="form-control form-control-sm"
+                           accept=".pdf,.md,.txt,.json,.xml,.csv" onchange="aiSeqHandleDocUpload(this)">
+                    <div id="seqAiDocStatus" class="small text-muted mt-1" style="display:none;"></div>
+                  </div>
+                </div>
+                <div class="mt-3 d-flex gap-2 align-items-center">
+                  <button class="btn btn-primary" id="seqAiVocabBtn" onclick="aiSeqGenerateVocab()">
+                    <i class="bi bi-stars me-1"></i> Générer le vocabulaire
+                  </button>
+                  <div id="seqAiStep0Spinner" class="spinner-border spinner-border-sm text-primary" style="display:none;"></div>
+                </div>
+              </div>
+
+              <!-- Vocabulary result (shown after generation) -->
+              <div id="seqAiVocabResult" style="display:none;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="mb-0 fw-bold">Vocabulaire cible</h6>
+                  <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="aiSeqGenerateVocab()">
+                      <i class="bi bi-arrow-clockwise me-1"></i> Regénérer
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="_aiSeqAddVocabRow()">
+                      <i class="bi bi-plus me-1"></i> Ajouter
+                    </button>
+                  </div>
+                </div>
+                <div class="small text-muted mb-2">Modifiez, ajoutez ou supprimez des expressions avant de continuer.</div>
+                <div id="seqAiVocabList" class="mb-3"></div>
+                <button class="btn btn-success" onclick="aiSeqGoToOutline()">
+                  <i class="bi bi-arrow-right me-1"></i> Valider et définir le plan
+                </button>
+              </div>
+            </div>
+
+            <!-- STEP 1: Outline -->
+            <div id="seqAiStep1" style="display:none;">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0 fw-bold">Étape 2 — Plan de la séquence</h6>
+                <button class="btn btn-sm btn-outline-secondary" onclick="aiSeqBackToVocab()">
+                  <i class="bi bi-arrow-left me-1"></i> Vocabulaire
+                </button>
+              </div>
+              <!-- Exercise counts -->
+              <div class="card border-0 bg-light p-3 mb-3" style="border-radius:10px;">
+                <div class="small fw-bold text-muted mb-2">NOMBRE D'EXERCICES PAR SECTION</div>
+                <div class="row g-2">
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1 text-primary fw-bold">S1 — Découvre</label>
+                    <input type="number" id="seqAiCountS1" class="form-control form-control-sm" value="5" min="2" max="12">
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1 text-success fw-bold">S2 — Pratique</label>
+                    <input type="number" id="seqAiCountS2" class="form-control form-control-sm" value="5" min="2" max="12">
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1 text-warning fw-bold">S3 — Approfondis</label>
+                    <input type="number" id="seqAiCountS3" class="form-control form-control-sm" value="5" min="2" max="12">
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1 text-danger fw-bold">S4 — Consolide</label>
+                    <input type="number" id="seqAiCountS4" class="form-control form-control-sm" value="5" min="2" max="12">
+                  </div>
+                </div>
+                <div class="mt-2 d-flex gap-2 align-items-center">
+                  <button class="btn btn-primary btn-sm" id="seqAiOutlineBtn" onclick="aiSeqGenerateOutline()">
+                    <i class="bi bi-stars me-1"></i> Générer le plan
+                  </button>
+                  <div id="seqAiStep1Spinner" class="spinner-border spinner-border-sm text-primary" style="display:none;"></div>
+                </div>
+              </div>
+              <!-- Outline result -->
+              <div id="seqAiOutlineResult" style="display:none;">
+                <div class="small text-muted mb-3">Modifiez le type, le focus ou les expressions cibles. Glissez pour réorganiser.</div>
+                <div id="seqAiOutlineBoard"></div>
+                <div class="mt-3 d-flex gap-2 align-items-center">
+                  <button class="btn btn-success" onclick="aiSeqGoToContent()">
+                    <i class="bi bi-arrow-right me-1"></i> Valider et générer le contenu
+                  </button>
+                  <button class="btn btn-outline-primary btn-sm" onclick="aiSeqGenerateOutline()">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Regénérer le plan
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- STEP 2: Content generation -->
+            <div id="seqAiStep2" style="display:none;">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0 fw-bold">Étape 3 — Génération du contenu</h6>
+                <button class="btn btn-sm btn-outline-secondary" onclick="aiSeqBackToOutline()">
+                  <i class="bi bi-arrow-left me-1"></i> Plan
+                </button>
+              </div>
+              <div class="small text-muted mb-3">Les exercices sont générés en parallèle. Modifiez ou regénérez chaque exercice individuellement.</div>
+              <div id="seqAiContentBoard"></div>
+              <div class="mt-4 d-flex gap-2 align-items-center" id="seqAiPopulateBar" style="display:none!important;">
+                <button class="btn btn-success btn-lg" onclick="aiSeqPopulate()">
+                  <i class="bi bi-check-circle me-1"></i> Créer les activités
+                </button>
+                <span class="text-muted small">Les activités seront ajoutées à votre séquence.</span>
+              </div>
+            </div>
+
+          </div>
+
           <!-- Welcome Screen -->
           <div id="welcome-screen" class="text-center py-5">
             <i class="bi bi-cursor text-muted" style="font-size: 4rem; opacity: 0.3;"></i>
@@ -765,12 +1226,54 @@
     </div>
   </div>
 
-  <!-- Fixed Action Bar -->
-  <div id="fixedActionBar" class="fixed-bottom d-flex justify-content-center align-items-center gap-3 p-3 border-top bg-light shadow-lg" style="display:none;">
-    <button class="btn btn-success" onclick="handleBottomExport()">💾 Exporter</button>
-    <button class="btn btn-primary" onclick="handleBottomPreview()"><i class="bi bi-play-circle me-1"></i> Prévisualiser</button>
+
+  <!-- Debug JSON Modal -->
+  <div class="modal fade" id="cartesDebugModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-code-slash me-2"></i>Debug JSON — Flashcards</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div id="cartesDebugTabs" class="d-flex gap-0 border-bottom px-3 pt-2 flex-wrap">
+            <!-- tab buttons injected by JS -->
+          </div>
+          <div id="cartesDebugContent" class="p-3">
+            <!-- pre blocks injected by JS -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+          <button type="button" class="btn btn-outline-primary" onclick="cartesDebugCopyAll()">
+            <i class="bi bi-clipboard me-1"></i> Copier tout
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
+  <!-- Validation warning modal -->
+  <div class="modal fade" id="validationWarningModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-warning-subtle">
+          <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Champs manquants</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">Les activités suivantes ont des champs incomplets :</p>
+          <div id="validationWarningList"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="button" class="btn btn-warning" id="validationExportAnywayBtn">Exporter quand même</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/validation-config.js"></script>
   <script src="script.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 

@@ -1,4 +1,23 @@
 /* ============================================
+   CHARACTER COUNTER
+============================================ */
+
+#charCounter {
+  position: fixed;
+  font-size: 11px;
+  color: #adb5bd;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 1px 6px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 9999;
+  display: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+#charCounter.warning { color: #fd7e14; }
+#charCounter.danger  { color: #dc3545; font-weight: bold; }
+
+/* ============================================
    BASE STYLES
 ============================================ */
 
@@ -6,7 +25,7 @@ body {
   font-family: Arial, sans-serif;
   margin: 0;
   padding: 0;
-  padding-bottom: 70px;
+  padding-bottom: 0;
 }
 
 .exercice {
@@ -275,30 +294,6 @@ input, textarea, select {
    FIXED ACTION BAR
 ============================================ */
 
-#fixedActionBar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: #f8f9fa;
-  border-top: 1px solid #dee2e6;
-  z-index: 1050;
-  padding: 0.4rem 0.75rem;
-  height: 60px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.75rem;
-  backdrop-filter: blur(10px);
-  background: rgba(248, 249, 250, 0.95);
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
-}
-
-#fixedActionBar .btn {
-  font-size: 0.9rem;
-  padding: 0.3rem 0.75rem;
-  border-radius: 0.3rem;
-}
 
 /* ============================================
    SIDEBAR NAVIGATION
@@ -558,6 +553,16 @@ input, textarea, select {
   background: #f8f9fa;
 }
 
+#cartesAddBtn_revision:not(:disabled) {
+  color: #0a6c8a;
+  border-color: #0a6c8a;
+}
+#cartesAddBtn_revision:not(:disabled):hover {
+  background-color: #0a6c8a;
+  color: #fff;
+}
+
+
 .content-area {
   max-width: 1200px;
   margin: 0 auto;
@@ -657,23 +662,6 @@ input, textarea, select {
     left: 0;
   }
 
-  .mobile-menu-toggle {
-    position: fixed;
-    bottom: 80px;
-    left: 1rem;
-    z-index: 1050;
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background: #0d6efd;
-    color: white;
-    border: none;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-  }
 
   .sidebar-overlay {
     display: none;
@@ -701,4 +689,18 @@ input, textarea, select {
 
 #scormPlayerModal{
   z-index: 50000;
+}
+
+/* ============================================
+   MODAL Z-INDEX FIX (above fixed overlay screens)
+============================================ */
+
+/* Our full-screen overlays sit at z-index 9997–9999.
+   Bootstrap modals default to 1055 — they'd appear behind.
+   Raise modals and their backdrop above all overlays. */
+.modal-backdrop {
+  z-index: 10000 !important;
+}
+.modal {
+  z-index: 10001 !important;
 }
