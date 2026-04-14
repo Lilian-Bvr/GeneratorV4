@@ -1,0 +1,290 @@
+{
+  "1": {
+    "label": "Grand débutant",
+    "cefr_approx": "A1",
+    "expression_orale": {
+      "peut_faire": [
+        "Employer des mots et expressions courants pour se présenter, saluer et remercier les autres",
+        "Donner des instructions très simples en quelques mots",
+        "Poser des questions de base en lien avec ses besoins immédiats",
+        "Répondre à des questions très simples et fournir des renseignements personnels de base"
+      ],
+      "parametres": [
+        "Parle très lentement, fait de longues pauses et répète souvent",
+        "N'utilise pas le discours enchaîné, parle en mots isolés ou en courtes suites de mots",
+        "Emploie un vocabulaire très limité constitué de mots courants et d'expressions mémorisées",
+        "Utilise seulement quelques structures grammaticales de base apprises",
+        "A recours à la gestuelle pour se faire comprendre",
+        "Ses difficultés de prononciation peuvent nuire à la compréhension",
+        "A besoin de l'aide soutenue de son interlocuteur"
+      ],
+      "conditions": [
+        "Communication très courte, très simple",
+        "Interactions informelles",
+        "Face à face avec un seul interlocuteur ou petit groupe attentif",
+        "Échanges guidés par des questions élémentaires",
+        "Consignes limitées à deux ou trois mots"
+      ]
+    },
+    "comprehension_orale": {
+      "peut_faire": [
+        "Comprendre des formules de salutation et de politesse élémentaires",
+        "Comprendre des demandes de répétition et de clarification",
+        "Comprendre et suivre de courtes consignes très simples en lien avec ses besoins immédiats",
+        "Reconnaître des expressions apprises pour offrir ou demander de l'aide",
+        "Reconnaître des expressions simples et courantes pour exprimer un besoin"
+      ],
+      "parametres": [
+        "Comprend des phrases simples et quelques détails de courts dialogues énoncés lentement",
+        "Comprend un nombre limité de mots courants en lien avec des objets familiers",
+        "Comprend de courtes phrases à la forme déclarative, interrogative et impérative",
+        "Sait différencier les affirmations des négations"
+      ],
+      "conditions": [
+        "Communication très courte, très simple et informelle",
+        "Échanges limités à quelques mots ou phrases",
+        "Sujets en lien avec ses besoins immédiats",
+        "Interlocuteur avec débit très lent et articulation très claire",
+        "Interlocuteur répète, reformule ou traduit"
+      ]
+    }
+  },
+  "2": {
+    "label": "Débutant",
+    "cefr_approx": "A1-A2",
+    "expression_orale": {
+      "peut_faire": [
+        "Saluer et se présenter à une personne connue ou inconnue",
+        "Employer des formules de politesse pour prendre congé ou présenter ses excuses",
+        "Donner de courtes instructions ou formuler des avertissements très simples",
+        "Poser des questions simples et prévisibles en lien avec ses besoins immédiats",
+        "Répondre à des questions simples et prévisibles sur ses renseignements personnels"
+      ],
+      "parametres": [
+        "Parle très lentement, fait de longues pauses et répète souvent",
+        "Utilise des phrases courtes et simples parfois enchaînées",
+        "Emploie un vocabulaire limité de mots et d'expressions courants pour parler de situations familières",
+        "Maîtrise quelques structures grammaticales de base",
+        "A encore recours à la gestuelle pour se faire comprendre",
+        "A encore besoin de l'aide de son interlocuteur"
+      ],
+      "conditions": [
+        "Communication très courte, très simple",
+        "Face à face avec un seul interlocuteur ou petit groupe attentif",
+        "Interactions informelles sur des sujets courants et familiers",
+        "Échanges guidés par des questions simples",
+        "Consignes limitées à de courts énoncés de quelques mots"
+      ]
+    },
+    "comprehension_orale": {
+      "peut_faire": [
+        "Comprendre des renseignements dans des échanges contenant des salutations et formules de présentation",
+        "Comprendre et suivre des consignes et instructions simples en lien avec ses besoins courants",
+        "Comprendre de courts échanges pour demander ou accorder une permission",
+        "Comprendre des demandes d'aide, des avertissements et brefs commentaires"
+      ],
+      "parametres": [
+        "Comprend l'information explicite principale de courts dialogues sur des sujets familiers",
+        "Comprend un vocabulaire de base incluant mots courants pour décrire objets, lieux, quantités",
+        "Comprend des phrases simples, composées et quelques phrases complexes",
+        "Reconnaît l'ordre des événements dans un court récit",
+        "Distingue le registre formel du registre informel",
+        "Demande encore à son interlocuteur de répéter"
+      ],
+      "conditions": [
+        "Communication courte, simple et informelle",
+        "Face à face ou support vidéo avec petit groupe",
+        "Communication accompagnée d'indices visuels et contextuels",
+        "Débit de lent à normal avec articulation claire",
+        "Interlocuteur traduit occasionnellement"
+      ]
+    }
+  },
+  "3": {
+    "label": "Intermédiaire faible",
+    "cefr_approx": "A2",
+    "expression_orale": {
+      "peut_faire": [
+        "Prendre part à de courtes conversations sociales, entamer et clore une conversation",
+        "Présenter deux personnes l'une à l'autre",
+        "Avoir de courtes conversations simples au téléphone",
+        "Donner des instructions et des directions pour se repérer",
+        "Expliquer des procédures simples et connues en lien avec sa vie quotidienne",
+        "Formuler une variété de demandes de services",
+        "Demander une permission ou de l'aide",
+        "Refuser une demande ou un service",
+        "Poser des questions pour obtenir des renseignements simples du quotidien",
+        "Exprimer ses besoins et ses préférences",
+        "Exprimer sa satisfaction et son mécontentement",
+        "Décrire brièvement des personnes, des activités, des lieux et des situations familières"
+      ],
+      "parametres": [
+        "Parle lentement et parfois à vitesse normale",
+        "Utilise des marqueurs de relation et de temps simples pour un discours enchaîné",
+        "Emploie un vocabulaire courant approprié en lien avec des situations quotidiennes",
+        "Maîtrise les structures grammaticales élémentaires et les temps des verbes",
+        "Conjugue les verbes courants au passé récent, passé composé et à l'imparfait"
+      ],
+      "conditions": [
+        "Communication courte et simple",
+        "Face à face, support vidéo ou téléphone avec un interlocuteur ou petit groupe",
+        "Interactions au téléphone brèves et prévisibles",
+        "Interactions informelles et occasionnellement formelles",
+        "Conversations sur des sujets courants",
+        "Consignes limitées à quatre étapes"
+      ]
+    },
+    "comprehension_orale": {
+      "peut_faire": [
+        "Comprendre des renseignements dans des conversations ou courts messages téléphoniques",
+        "Comprendre et suivre des instructions pour des procédures simples et connues",
+        "Respecter l'ordre des étapes d'une consigne simple",
+        "Comprendre de courtes annonces simples visant à influencer",
+        "Comprendre des demandes d'aide, avertissements et courts échanges"
+      ],
+      "parametres": [
+        "Saisit le but et l'idée principale d'un discours",
+        "Comprend l'essentiel des détails et certains éléments implicites",
+        "Comprend un vocabulaire courant de la vie quotidienne et sujets familiers",
+        "Reconnaît les marqueurs courants de temps, d'espace et de séquence",
+        "Distingue les différents styles et registres de langue courants",
+        "Comprend encore difficilement son interlocuteur au téléphone"
+      ],
+      "conditions": [
+        "Communication courte, simple et informelle",
+        "Sujets en lien avec des situations familières quotidiennes",
+        "Face à face, téléphone ou support audio/vidéo",
+        "Débit de lent à normal",
+        "Interlocuteur traduit occasionnellement"
+      ]
+    }
+  },
+  "4": {
+    "label": "Intermédiaire",
+    "cefr_approx": "B1",
+    "expression_orale": {
+      "peut_faire": [
+        "Exprimer ses sentiments, remerciements, excuses, félicitations et compliments",
+        "Lancer, accepter ou refuser des invitations",
+        "Avoir de courtes conversations téléphoniques",
+        "Donner une série de consignes et expliquer des procédures simples et connues",
+        "Formuler des conseils et suggestions courants",
+        "Fournir des explications pour convaincre quelqu'un",
+        "Exprimer son opinion sur des sujets d'intérêt général",
+        "Fournir ou demander des précisions",
+        "Présenter formellement quelqu'un à un grand groupe",
+        "Formuler un souhait, une plainte ou sa déception",
+        "Clarifier ou confirmer des informations par téléphone",
+        "Laisser des messages vocaux précis et détaillés",
+        "Fournir des arguments pour convaincre",
+        "Exprimer de façon nuancée son approbation, désaccord, possibilité ou probabilité",
+        "Fournir et demander des renseignements détaillés et complexes",
+        "Résumer les propos de quelqu'un",
+        "Raconter en détail des événements passés, présents ou futurs",
+        "Décrire ou comparer des activités, des tâches ou ses expériences"
+      ],
+      "parametres": [
+        "Parle lentement mais parfois à vitesse normale avec effort",
+        "Pauses et hésitations encore fréquentes",
+        "Emploie diverses structures simples et quelques structures complexes",
+        "Utilise des marqueurs de relation et de temps courants",
+        "Structure son récit avec introduction, développement et conclusion",
+        "Emploie un vocabulaire courant incluant un nombre limité d'expressions idiomatiques"
+      ],
+      "conditions": [
+        "Communication simple à modérément complexe, durée moyenne",
+        "Face à face, support vidéo ou téléphone avec un interlocuteur ou petit groupe attentif",
+        "Interactions informelles et formelles",
+        "Conversations sur des sujets familiers et concrets",
+        "Contexte clair, prévisible et un peu exigeant"
+      ]
+    },
+    "comprehension_orale": {
+      "peut_faire": [
+        "Comprendre des échanges modérément complexes contenant des excuses, compliments, regrets",
+        "Comprendre des invitations et propositions",
+        "Comprendre de courts appels téléphoniques simples et prévisibles",
+        "Comprendre des consignes pour des procédures techniques connues",
+        "Comprendre des conseils, suggestions, mises en garde et encouragements"
+      ],
+      "parametres": [
+        "Comprend les idées principales et détails importants d'échanges sur sujets connus",
+        "Comprend des monologues et conversations impliquant jusqu'à 4 participants",
+        "Comprend des informations explicites et des concepts généraux ou abstraits",
+        "Comprend plusieurs expressions idiomatiques courantes",
+        "Reconnaît les différents styles et registres de langue",
+        "Identifie l'humeur et l'attitude de ses interlocuteurs",
+        "Reconnaît quelques références culturelles"
+      ],
+      "conditions": [
+        "Communication de durée moyenne, formelle ou informelle",
+        "Sujets familiers, personnels, tirés de la vie quotidienne",
+        "Face à face, téléphone ou support audio/vidéo",
+        "Débit de lent à normal avec élocution claire",
+        "Préparation adéquate avant une écoute ciblée"
+      ]
+    }
+  },
+  "5": {
+    "label": "Intermédiaire avancé",
+    "cefr_approx": "B1-B2",
+    "expression_orale": {
+      "peut_faire": [
+        "Exprimer son opinion sur des sujets d'intérêt général et parfois abstraits",
+        "Fournir des arguments nuancés pour convaincre",
+        "Exprimer de façon nuancée approbation, désapprobation, possibilité, probabilité",
+        "Participer à des discussions en groupe sur des sujets familiers et parfois abstraits",
+        "Présenter avec clarté lors de réunions formelles",
+        "Gérer des situations téléphoniques complexes et imprévues",
+        "Adapter son registre selon le contexte (formel/informel)",
+        "Nuancer son expression des sentiments, réserves et opinions"
+      ],
+      "parametres": [
+        "Parle lentement mais parfois à vitesse normale avec aisance",
+        "A recours à la reformulation et l'auto-correction en cas de difficulté",
+        "Adapte son intonation au contexte",
+        "Emploie diverses structures de phrases simples et parfois complexes",
+        "Utilise une variété de connecteurs et marqueurs de relation",
+        "Emploie un vocabulaire varié et précis incluant des expressions idiomatiques"
+      ],
+      "conditions": [
+        "Communication simple à modérément complexe, durée moyenne à longue",
+        "Avec un interlocuteur ou groupe connu, lors de réunions, support vidéo ou téléphone",
+        "Interactions informelles et formelles",
+        "Conversations sur sujets familiers, concrets et parfois abstraits",
+        "Contexte modérément exigeant"
+      ]
+    },
+    "comprehension_orale": {
+      "peut_faire": [
+        "Comprendre des échanges modérément complexes contenant des plaintes ou opinions",
+        "Comprendre des propos exprimant espoir, gratitude, satisfaction, mécontentement, déception",
+        "Comprendre les nuances dans l'attitude et l'intention des interlocuteurs",
+        "Comprendre des consignes modérément complexes",
+        "Comprendre des rappels, menaces et recommandations",
+        "Comprendre des discussions informelles sur sujets d'intérêt général",
+        "Comprendre des présentations détaillées d'environ 20 minutes avec supports visuels",
+        "Comprendre des discussions de travail en groupe sur sujets techniques ou généraux"
+      ],
+      "parametres": [
+        "Comprend les idées principales même implicites, les détails et sous-entendus",
+        "Comprend des conversations impliquant jusqu'à 4 participants",
+        "Comprend un vocabulaire varié incluant termes spécialisés, abstraits ou peu courants",
+        "Comprend une variété de structures simples, complexes et composées",
+        "Comprend des expressions idiomatiques courantes et certaines peu fréquentes",
+        "Reconnaît différents styles, registres et certaines variétés de langue",
+        "Reconnaît l'humeur et l'attitude de ses interlocuteurs",
+        "Reconnaît une variété de références culturelles",
+        "A de la difficulté avec les locuteurs natifs au débit rapide ou avec accent"
+      ],
+      "conditions": [
+        "Communication de durée moyenne à longue",
+        "Formelle ou informelle",
+        "Sujets liés à connaissances générales, expériences de vie, parfois spécialisés ou techniques",
+        "Face à face, téléphone ou support audio/vidéo",
+        "Débit de lent à normal avec élocution claire",
+        "Préparation adéquate avant une écoute ciblée"
+      ]
+    }
+  }
+}
