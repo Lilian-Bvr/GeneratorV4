@@ -70,6 +70,7 @@ const imagesData = {};
 const audiosData = {};
 const videosData = {};
 const recapAudiosData = {};
+let _sequenceurMode = 'full'; // 'full' = S1–S4, 'court' = S1 only
 let currentImageConfirmCallback = null;
 let cropper, currentExId;
 let ffmpeg = null;
@@ -243,7 +244,7 @@ function pbShowTab(tab) {
 async function pbLoadModeles() {
   try {
     const timestamps = await _getModeleTimestamps();
-    ['Modele', 'Modele_Flashcards', 'Modele_QuickPreview'].forEach(name => {
+    ['Modele', 'Modele_Court', 'Modele_Flashcards', 'Modele_QuickPreview'].forEach(name => {
       const ts = timestamps[name];
       const el = document.getElementById(`modeleDate_${name}`);
       if (!el) return;
@@ -638,7 +639,7 @@ function fbRenderFiles() {
       </thead>
       <tbody>
         ${_fbFilteredFiles.map(f => {
-          const mKey       = f.type === 'flashcards' ? 'Modele_Flashcards' : 'Modele';
+          const mKey       = _modeleKeyForType(f.type);
           const mCurrent   = _modeleTimestamps[mKey];
           const isOutdated = f.modele_saved_at && mCurrent && mCurrent > f.modele_saved_at;
           const mDate      = f.modele_saved_at
@@ -651,7 +652,7 @@ function fbRenderFiles() {
               ${f.parent_id ? `<br><small class="text-muted">Copie de <em>${_esc(f.parent_name || '?')}</em></small>` : ''}
               ${mDate ? `<br><small style="color:${isOutdated ? '#fd7e14' : '#6c757d'}">${isOutdated ? '<i class="bi bi-exclamation-triangle-fill me-1"></i>' : ''}Modèle du ${mDate}${isOutdated ? ' — mis à jour' : ''}</small>` : ''}
             </td>
-            <td><span class="badge ${f.type === 'sequence' ? 'bg-primary' : 'bg-success'}">${f.type === 'sequence' ? 'Séquence' : 'Flashcards'}</span></td>
+            <td><span class="badge ${f.type === 'sequence' ? 'bg-primary' : f.type === 'court' ? 'bg-info' : 'bg-success'}">${f.type === 'sequence' ? 'Séquence' : f.type === 'court' ? 'Séquence courte' : 'Flashcards'}</span></td>
             <td><span class="badge bg-light text-dark border">${LEVEL_LABELS[f.level] || '—'}</span></td>
             <td>${_esc(f.author_name)}</td>
             <td class="text-muted small">${_relativeTime(f.updated_at)}</td>
@@ -706,7 +707,7 @@ function fbCreateNewFile() {
   // Open the editor — file will be saved when user clicks "Save to project"
   _currentFileId      = null; // new file, no ID yet
   _currentFileMeta    = { name, type, level: parseInt(level) };
-  selectMode(type === 'flashcards' ? 'cartes' : 'sequenceur');
+  selectMode(type === 'flashcards' ? 'cartes' : type === 'court' ? 'sequenceur_court' : 'sequenceur');
 }
 
 async function fbOpenFile(file) {
@@ -726,7 +727,7 @@ async function fbOpenFile(file) {
       selectMode('cartes');
       setTimeout(() => importCartes(zipFile), 300);
     } else {
-      selectMode('sequenceur');
+      selectMode(file.type === 'court' ? 'sequenceur_court' : 'sequenceur');
       setTimeout(() => importZipProject(zipFile), 300);
     }
   } catch (e) {
@@ -739,7 +740,7 @@ async function fbPreviewFile(fileId) {
   const file = _fbAllFiles.find(f => f.id === fileId);
   if (file?.modele_saved_at) {
     const timestamps = await _getModeleTimestamps();
-    const modeleKey  = file.type === 'flashcards' ? 'Modele_Flashcards' : 'Modele';
+    const modeleKey  = _modeleKeyForType(file.type);
     if (timestamps[modeleKey] && timestamps[modeleKey] > file.modele_saved_at) {
       const upgrade = confirm(
         'Le modèle de ce fichier a été mis à jour depuis la dernière sauvegarde.\n\n' +
@@ -858,6 +859,12 @@ function _scheduleAutoSave() {
   _autoSaveTimer = setTimeout(() => saveToProject(true), 15000); // 15s debounce
 }
 
+function _modeleKeyForType(type) {
+  if (type === 'flashcards') return 'Modele_Flashcards';
+  if (type === 'court')      return 'Modele_Court';
+  return 'Modele';
+}
+
 async function _getModeleTimestamps() {
   try {
     const res = await fetch(`${SERVER_URL}/api/modeles/timestamps`, { headers: authHeaders() });
@@ -896,7 +903,7 @@ async function saveToProject(isAuto = false) {
     meta.level = saveLevel;
 
     const timestamps = await _getModeleTimestamps();
-    const modeleKey  = meta.type === 'flashcards' ? 'Modele_Flashcards' : 'Modele';
+    const modeleKey  = _modeleKeyForType(meta.type);
     const modeleSavedAt = timestamps[modeleKey] || null;
 
     const form = new FormData();
@@ -962,17 +969,42 @@ function clearSequenceur() {
   if (levelEl) levelEl.value = '1';
 }
 
+function _setSequenceurSections(courtMode) {
+  ['S2', 'S3', 'S4'].forEach(s => {
+    const group = document.getElementById(`section-group-${s}`);
+    if (group) group.style.display = courtMode ? 'none' : '';
+  });
+
+  // Rename S1 label: "Découvre" in full mode, "Pratique" in court mode
+  const s1NameEl = document.querySelector('#section-group-S1 .section-name');
+  if (s1NameEl) s1NameEl.textContent = courtMode ? 'Pratique' : 'Découvre';
+
+  const overviewTitle = document.getElementById('overview-title');
+  if (overviewTitle) overviewTitle.textContent = courtMode ? 'Section 1 : Pratique' : 'Section 1 : Découvre';
+
+  // AI panel: hide S2/S3/S4 count columns and relabel S1
+  ['S2', 'S3', 'S4'].forEach(s => {
+    const col = document.getElementById(`seqAiCountCol_${s}`);
+    if (col) col.style.display = courtMode ? 'none' : '';
+  });
+  const aiLabelS1 = document.getElementById('seqAiLabelS1');
+  if (aiLabelS1) aiLabelS1.textContent = courtMode ? 'S1 — Pratique' : 'S1 — Découvre';
+}
+
 function selectMode(mode) {
   if (!mode) {
     showProjectBrowser();
     return;
   }
-  if (mode === 'sequenceur') {
+  if (mode === 'sequenceur' || mode === 'sequenceur_court') {
+    _sequenceurMode = mode === 'sequenceur_court' ? 'court' : 'full';
     clearSequenceur();
     _showScreen('sequenceur');
+    _setSequenceurSections(_sequenceurMode === 'court');
     _autoSaveEnabled = !!_fbProjectId;
     _syncMetaToEditor('sequenceur');
   } else if (mode === 'cartes') {
+    _sequenceurMode = 'full';
     _showScreen('cartes');
     _autoSaveEnabled = !!_fbProjectId;
     _initCartesMode();
@@ -4584,7 +4616,7 @@ function previewDebug() {
   `;
 }
 //  GENERATION DU PAQUET  //
-async function generatePackage(templatePath = "Modele/Modele.zip") {
+async function generatePackage(templatePath = _sequenceurMode === 'court' ? "Modele/Modele_Court.zip" : "Modele/Modele.zip") {
   if (!_exportValidationBypassed) {
     const _valWarnings = validateAllSequence();
     if (_valWarnings.length > 0) {
@@ -7741,7 +7773,7 @@ function updateLoadingStatus(message, progress) {
   if (progressBar) progressBar.style.width = progress + '%';
 }
 //  Génère le paquet en mémoire
-async function generateSCORMPackageInMemory(templatePath = "Modele/Modele.zip") {
+async function generateSCORMPackageInMemory(templatePath = _sequenceurMode === 'court' ? "Modele/Modele_Court.zip" : "Modele/Modele.zip") {
   let data;
   try {
     data = buildResult();
@@ -8970,12 +9002,14 @@ function handleCarteAudio(event, audioType, stableId) {
   cartesAudioBlobs[audioType][stableId] = file;
   refreshCarteAudioPreview(audioType, stableId);
   if (audioType === 'expressions') refreshCarteLonguesFrontAudioInfo();
+  updateCarteWarningBadge(_carteTypeFromAudioType(audioType), stableId);
 }
 
 function openElevenLabsForCarte(audioType, stableId) {
   openElevenLabsModal(`CARTE_${audioType}_${stableId}`, (blob) => {
     cartesAudioBlobs[audioType][stableId] = blob;
     refreshCarteAudioPreview(audioType, stableId);
+    updateCarteWarningBadge(_carteTypeFromAudioType(audioType), stableId);
   });
 }
 
@@ -8989,6 +9023,7 @@ function openRecorderForCarte(audioType, stableId) {
   openRecorderModal((blob) => {
     cartesAudioBlobs[audioType][stableId] = blob;
     refreshCarteAudioPreview(audioType, stableId);
+    updateCarteWarningBadge(_carteTypeFromAudioType(audioType), stableId);
   }, refText);
 }
 
@@ -9020,6 +9055,42 @@ function renderCarteAudioPreview(container, audioType, stableId) {
 function deleteCarteAudio(audioType, stableId) {
   delete cartesAudioBlobs[audioType][stableId];
   refreshCarteAudioPreview(audioType, stableId);
+  updateCarteWarningBadge(_carteTypeFromAudioType(audioType), stableId);
+}
+
+function _carteTypeFromAudioType(audioType) {
+  return audioType === 'expressions' ? 'courtes' : 'longues';
+}
+
+function validateCarte(type, id) {
+  const issues = [];
+  const val = elId => document.getElementById(elId)?.value?.trim() || '';
+  if (type === 'courtes') {
+    if (!val(`carteCourteFront_${id}`))     issues.push('Face avant manquante');
+    if (!val(`carteCourteBack_${id}`))      issues.push('Face arrière manquante');
+    if (!cartesAudioBlobs.expressions[id]) issues.push('Audio face arrière manquant');
+  } else if (type === 'longues') {
+    if (!val(`carteLongueFrontText_${id}`))  issues.push('Texte face avant manquant');
+    if (!val(`carteLongueBack_${id}`))       issues.push('Texte face arrière manquant');
+    if (!cartesAudioBlobs.longuesFront[id]) issues.push('Audio face avant manquant');
+    if (!cartesAudioBlobs.longuesDef[id])   issues.push('Audio face arrière manquant');
+  }
+  return issues;
+}
+
+function updateCarteWarningBadge(type, id) {
+  const issues = validateCarte(type, id);
+  const show = issues.length > 0;
+  const title = issues.join('\n');
+  [
+    document.getElementById(`carteBadge_${type}_${id}`),
+    document.getElementById(`carteBadge_nav_${type}_${id}`)
+  ].forEach(badge => {
+    if (!badge) return;
+    badge.textContent = '!';
+    badge.title = title;
+    badge.style.display = show ? '' : 'none';
+  });
 }
 
 // ── Flashcards Courtes ────────────────────────────────────────
@@ -9035,7 +9106,10 @@ function addCarteCourte() {
   div.innerHTML = `
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <strong class="carte-number">Carte ?</strong>
-      ${CARTES_FIXED_COUNT === null ? `<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCarteCourte(${id})">&#10060;</button>` : ''}
+      <div class="d-flex align-items-center gap-2">
+        <span id="carteBadge_courtes_${id}" class="badge bg-danger" style="display:none;cursor:default;" title=""></span>
+        ${CARTES_FIXED_COUNT === null ? `<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCarteCourte(${id})">&#10060;</button>` : ''}
+      </div>
     </div>
     <div class="card-body">
       <div class="mb-2">
@@ -9046,14 +9120,15 @@ function addCarteCourte() {
         <div class="col-md-6">
           <label class="form-label small fw-bold">Face avant <span class="fw-normal text-muted">(anglais)</span></label>
           <textarea id="carteCourteFront_${id}" class="form-control form-control-sm" rows="2" placeholder="English expression..."
-            oninput="updateCarteNavLabel('courtes',${id})"></textarea>
+            oninput="updateCarteNavLabel('courtes',${id}); updateCarteWarningBadge('courtes',${id})"></textarea>
           <button type="button" class="btn btn-sm btn-outline-info mt-1 py-0 px-2" style="font-size:0.75rem;"
             onclick="translateCarteCourte(${id})">&#127760; Traduire depuis la face arri&#232;re</button>
         </div>
         <div class="col-md-6">
           <label class="form-label small fw-bold">Face arri&#232;re <span class="fw-normal text-muted">(fran&#231;ais)</span></label>
           <textarea id="carteCourteBack_${id}" class="form-control form-control-sm" rows="2"
-            placeholder="Expression fran&#231;aise..."></textarea>
+            placeholder="Expression fran&#231;aise..."
+            oninput="updateCarteWarningBadge('courtes',${id})"></textarea>
         </div>
       </div>
       <div class="mb-2">
@@ -9073,6 +9148,7 @@ function addCarteCourte() {
   rebuildCartesNavList('courtes');
   autoExpandCartesSection('courtes');
   showCarteCard('courtes', id);
+  setTimeout(() => updateCarteWarningBadge('courtes', id), 0);
 }
 
 function removeCarteCourte(id) {
@@ -9150,7 +9226,10 @@ function addCarteLongue() {
   div.innerHTML = `
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <strong class="carte-number">Carte ?</strong>
-      ${CARTES_FIXED_COUNT === null ? `<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCarteLongue(${id})">&#10060;</button>` : ''}
+      <div class="d-flex align-items-center gap-2">
+        <span id="carteBadge_longues_${id}" class="badge bg-danger" style="display:none;cursor:default;" title=""></span>
+        ${CARTES_FIXED_COUNT === null ? `<button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCarteLongue(${id})">&#10060;</button>` : ''}
+      </div>
     </div>
     <div class="card-body">
       <div class="mb-2">
@@ -9169,7 +9248,7 @@ function addCarteLongue() {
         <label class="form-label small fw-bold">Face avant <span class="fw-normal text-muted">(texte)</span></label>
         <input type="text" id="carteLongueFrontText_${id}" class="form-control form-control-sm mb-1"
           placeholder="Texte de la face avant (pr&#233;-rempli depuis Courtes, modifiable)"
-          oninput="updateCarteNavLabel('longues',${id})">
+          oninput="updateCarteNavLabel('longues',${id}); updateCarteWarningBadge('longues',${id})">
         <label class="form-label small fw-bold mt-1">Audio face avant</label>
         ${createCarteAudioButtons('longuesFront', id)}
         <div id="carteLongueFrontPreview_${id}"></div>
@@ -9178,7 +9257,7 @@ function addCarteLongue() {
         <label class="form-label small fw-bold">Face arri&#232;re <span class="fw-normal text-muted">(phrase)</span></label>
         <textarea id="carteLongueBack_${id}" class="form-control form-control-sm" rows="2"
           placeholder="La phrase compl&#232;te avec l'expression..."
-          oninput="updateCarteNavLabel('longues',${id})"></textarea>
+          oninput="updateCarteNavLabel('longues',${id}); updateCarteWarningBadge('longues',${id})"></textarea>
         <label class="form-label small fw-bold mt-1">Audio face arri&#232;re</label>
         ${createCarteAudioButtons('longuesDef', id)}
         <div id="carteLongueDefPreview_${id}"></div>
@@ -9195,6 +9274,7 @@ function addCarteLongue() {
   rebuildCartesNavList('longues');
   autoExpandCartesSection('longues');
   showCarteCard('longues', id);
+  setTimeout(() => updateCarteWarningBadge('longues', id), 0);
 }
 
 function removeCarteLongue(id) {
@@ -9233,6 +9313,7 @@ function updateCarteLongueFront(id) {
   if (textInput && !textInput.value.trim()) {
     textInput.value = document.getElementById(`carteCourteBack_${refId}`)?.value || '';
   }
+  updateCarteWarningBadge('longues', id);
   // Show link status
   const courtes = [...document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]')];
   const pos = courtes.findIndex(c => parseInt(c.id.replace('carteCourte_', '')) === refId);
@@ -9982,6 +10063,14 @@ async function importCartes(eventOrFile) {
       showCarteCard(s, firstId);
     });
 
+    // Refresh warning badges for all imported cards
+    document.querySelectorAll('#carteCourtesList [id^="carteCourte_"]').forEach(card => {
+      updateCarteWarningBadge('courtes', parseInt(card.id.replace('carteCourte_', '')));
+    });
+    document.querySelectorAll('#carteLonguesList [id^="carteLongue_"]').forEach(card => {
+      updateCarteWarningBadge('longues', parseInt(card.id.replace('carteLongue_', '')));
+    });
+
     hideImportOverlay(true);
   } catch (e) {
     console.error('Import cartes error:', e);
@@ -10084,12 +10173,17 @@ function rebuildCartesNavList(section) {
     const deleteBtn = section === 'revision'
       ? `<button class="btn btn-sm text-danger p-0 ms-1 border-0 bg-transparent" title="Supprimer" onclick="event.stopPropagation();removeCarteRevision(${stableId});" style="line-height:1;"><i class="bi bi-trash3"></i></button>`
       : '';
+    const navIssues = (section === 'courtes' || section === 'longues') ? validateCarte(section, stableId) : [];
+    const navBadge = navIssues.length > 0
+      ? `<span id="carteBadge_nav_${section}_${stableId}" class="badge bg-danger ms-1" style="cursor:default;" title="${navIssues.join('\n')}">!</span>`
+      : `<span id="carteBadge_nav_${section}_${stableId}" class="badge bg-danger ms-1" style="display:none;cursor:default;">!</span>`;
     li.innerHTML =
       `<i class="bi bi-grip-vertical drag-handle"></i>` +
       `<span class="flex-grow-1" onclick="showCartesTab('${section}'); showCarteCard('${section}',${stableId});" style="cursor:pointer;">` +
         `<strong>${cfg.label} ${num}</strong>` +
         (label ? ` <span class="exercise-type">&ndash; ${label}</span>` : '') +
       `</span>` +
+      navBadge +
       deleteBtn;
     li.addEventListener('dragstart', _carteDragStart);
     li.addEventListener('dragend', _carteDragEnd);
@@ -10124,12 +10218,21 @@ const SEQ_AI_TYPES = [
   { value: 'Dialogue|',            label: 'Dialogue' },
 ];
 
-const SEQ_AI_SECTIONS = {
+const SEQ_AI_SECTIONS_FULL = {
   S1: { label: 'S1 — Découvre',     color: 'primary' },
   S2: { label: 'S2 — Pratique',     color: 'success' },
   S3: { label: 'S3 — Approfondis',  color: 'warning' },
   S4: { label: 'S4 — Consolide',    color: 'danger' },
 };
+const SEQ_AI_SECTIONS_COURT = {
+  S1: { label: 'S1 — Pratique', color: 'primary' },
+};
+// Returns the section map for the current mode
+function _seqAiSections() {
+  return _sequenceurMode === 'court' ? SEQ_AI_SECTIONS_COURT : SEQ_AI_SECTIONS_FULL;
+}
+// Keep SEQ_AI_SECTIONS as alias for backwards compatibility within this file
+const SEQ_AI_SECTIONS = SEQ_AI_SECTIONS_FULL;
 
 function showSeqAiPanel() {
   document.getElementById('welcome-screen').style.display = 'none';
@@ -10301,12 +10404,12 @@ async function aiSeqGenerateOutline() {
   const theme = document.getElementById('seqAiTheme')?.value?.trim() || '';
   const niveau = document.getElementById('seqAiNiveau')?.value || '3';
   const contraintes = document.getElementById('seqAiContraintes')?.value?.trim() || '';
-  const counts = {
-    S1: parseInt(document.getElementById('seqAiCountS1')?.value) || 5,
-    S2: parseInt(document.getElementById('seqAiCountS2')?.value) || 5,
-    S3: parseInt(document.getElementById('seqAiCountS3')?.value) || 5,
-    S4: parseInt(document.getElementById('seqAiCountS4')?.value) || 5,
-  };
+  const counts = { S1: parseInt(document.getElementById('seqAiCountS1')?.value) || 5 };
+  if (_sequenceurMode !== 'court') {
+    counts.S2 = parseInt(document.getElementById('seqAiCountS2')?.value) || 5;
+    counts.S3 = parseInt(document.getElementById('seqAiCountS3')?.value) || 5;
+    counts.S4 = parseInt(document.getElementById('seqAiCountS4')?.value) || 5;
+  }
   _aiSeqVocab = _aiSeqCollectVocab();
 
   _aiSpinner('seqAiStep1Spinner', true);
@@ -10337,7 +10440,7 @@ function _aiSeqRenderOutline() {
   const typeOptions = SEQ_AI_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('');
 
   let html = '<div class="row g-3">';
-  Object.entries(SEQ_AI_SECTIONS).forEach(([sKey, sMeta]) => {
+  Object.entries(_seqAiSections()).forEach(([sKey, sMeta]) => {
     const exercises = _aiSeqOutline[sKey] || [];
     html += `<div class="col-12">
       <div class="card border-${sMeta.color}" style="border-radius:10px;">
@@ -10359,7 +10462,7 @@ function _aiSeqRenderOutline() {
   board.innerHTML = html;
 
   // Enable drag-and-drop for each section
-  Object.keys(SEQ_AI_SECTIONS).forEach(sKey => _aiSeqInitDrag(`outlineSection_${sKey}`, sKey));
+  Object.keys(_seqAiSections()).forEach(sKey => _aiSeqInitDrag(`outlineSection_${sKey}`, sKey));
 }
 
 function _aiSeqOutlineRowHtml(sKey, ex, i, typeOptions) {
@@ -10502,7 +10605,7 @@ function aiSeqGoToContent() {
 function _aiSeqBuildContentBoard() {
   const board = document.getElementById('seqAiContentBoard');
   let html = '';
-  Object.entries(SEQ_AI_SECTIONS).forEach(([sKey, sMeta]) => {
+  Object.entries(_seqAiSections()).forEach(([sKey, sMeta]) => {
     const exercises = _aiSeqOutline[sKey] || [];
     if (!exercises.length) return;
     html += `<div class="mb-4">
@@ -10532,7 +10635,7 @@ function _aiSeqBuildContentBoard() {
   board.innerHTML = html;
 
   // Drag to reorder within sections
-  Object.keys(SEQ_AI_SECTIONS).forEach(sKey => _aiSeqInitContentDrag(`contentSection_${sKey}`, sKey));
+  Object.keys(_seqAiSections()).forEach(sKey => _aiSeqInitContentDrag(`contentSection_${sKey}`, sKey));
 }
 
 function _aiSeqInitContentDrag(containerId, sKey) {
@@ -10600,6 +10703,7 @@ async function _aiSeqGenerateOneExercise(ex, niveau, theme, contraintes, isRegen
     if (!res.ok) throw new Error(data.error || 'Erreur serveur');
 
     _aiSeqContent[ex.id] = { content: data.content, type: ex.type, subtype: ex.subtype };
+    console.log(`[AI content] ${ex.id} (${ex.type}|${ex.subtype})`, JSON.parse(JSON.stringify(data.content)));
     if (cardBody) {
       cardBody.innerHTML = _aiSeqRenderExerciseContent(ex, data.content);
       cardBody.style.display = 'block';
@@ -10633,7 +10737,7 @@ function _aiSeqRegenExercise(exId) {
 
 function _aiSeqRenderExerciseContent(ex, c) {
   const sKey = ex.section || 'S1';
-  const sMeta = SEQ_AI_SECTIONS[sKey] || SEQ_AI_SECTIONS.S1;
+  const sMeta = _seqAiSections()[sKey] || SEQ_AI_SECTIONS_FULL.S1;
   let html = '<div class="row g-2 p-1">';
 
   if (ex.type === 'Leçon' && ex.subtype === 'simple') {
@@ -10733,12 +10837,21 @@ function _aiSeqRenderExerciseContent(ex, c) {
       <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="feedback" value="${_esc(c.feedback)}"></div>`;
 
   } else if (ex.type === 'Flashcard') {
-    html += `
-      <div class="col-md-6"><label class="form-label small mb-1">Recto <span class="text-muted fw-normal">(concept / mot)</span></label>
-        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="front_text" value="${_esc(c.front_text)}"></div>
-      <div class="col-md-6"><label class="form-label small mb-1">Verso <span class="text-muted fw-normal">(${ex.subtype === 'courte' ? 'réponse courte' : 'phrase complète'})</span></label>
-        <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="back_text" value="${_esc(c.back_text)}"></div>
-      <div class="col-12 text-muted small"><i class="bi bi-info-circle me-1"></i>Les fichiers audio seront enregistrés séparément dans l'éditeur.</div>`;
+    // Build cards array — AI returns {cards:[...]}; fallback to legacy flat format
+    const reviewCards = (c.cards && c.cards.length > 0) ? c.cards : [{ front_text: c.front_text || '', back_text: c.back_text || '' }];
+    const backLabel = ex.subtype === 'courte' ? 'réponse courte' : 'phrase complète';
+    if (reviewCards.length > 1) {
+      html += `<div class="col-12"><div class="alert alert-info py-2 px-3 small mb-2"><i class="bi bi-layers me-1"></i>Cet exercice contient <strong>${reviewCards.length} cartes</strong> — ${reviewCards.length} activités seront créées dans la séquence.</div></div>`;
+    }
+    reviewCards.forEach((card, ci) => {
+      const prefix = reviewCards.length > 1 ? `Carte ${ci + 1} — ` : '';
+      html += `
+        <div class="col-md-6"><label class="form-label small mb-1">${prefix}Recto <span class="text-muted fw-normal">(concept / mot)</span></label>
+          <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="card_front_${ci}" value="${_esc(card.front_text)}"></div>
+        <div class="col-md-6"><label class="form-label small mb-1">${prefix}Verso <span class="text-muted fw-normal">(${backLabel})</span></label>
+          <input type="text" class="form-control form-control-sm" data-ex="${ex.id}" data-f="card_back_${ci}" value="${_esc(card.back_text)}"></div>`;
+    });
+    html += `<div class="col-12 text-muted small"><i class="bi bi-info-circle me-1"></i>Les fichiers audio seront enregistrés séparément dans l'éditeur.</div>`;
 
   } else if (ex.type === 'Leçon' && ex.subtype === 'complexe') {
     const lignes = c.lignes || [];
@@ -10838,8 +10951,19 @@ function _aiSeqCollectContent() {
         c.pairs = [0,1,2,3].map(p => ({ left_transcription: get(`pair_left_${p}`), right_transcription: get(`pair_right_${p}`) }));
         c.feedback = get('feedback');
       } else if (ex.type === 'Flashcard') {
-        c.front_text = get('front_text'); c.back_text = get('back_text');
-        if (stored.content?.cards) c.cards = stored.content.cards;
+        // Collect all card rows that were rendered in the review (data-f="card_front_N")
+        const storedCards = stored.content?.cards;
+        const cardCount = storedCards?.length || 1;
+        const builtCards = [];
+        for (let ci = 0; ci < cardCount; ci++) {
+          const front = get(`card_front_${ci}`);
+          const back  = get(`card_back_${ci}`);
+          builtCards.push({
+            front_text: (front !== undefined && front !== null) ? front : (storedCards?.[ci]?.front_text || ''),
+            back_text:  (back  !== undefined && back  !== null) ? back  : (storedCards?.[ci]?.back_text  || ''),
+          });
+        }
+        c.cards = builtCards;
       } else if (ex.type === 'Leçon' && ex.subtype === 'complexe') {
         c.texte_html = get('texte_html');
         c.nb_cols = parseInt(get('nb_cols')) || 1;
@@ -10879,7 +11003,7 @@ function _aiSeqRenderContentReview_UNUSED(activities) {
   const container = document.getElementById('seqAiContentReview');
   let html = '';
 
-  Object.entries(SEQ_AI_SECTIONS).forEach(([sKey, sMeta]) => {
+  Object.entries(_seqAiSections()).forEach(([sKey, sMeta]) => {
     const items = activities[sKey] || [];
     if (!items.length) return;
     html += `<div class="mb-4">
@@ -11017,7 +11141,7 @@ function _escJs(str) {
 function _aiSeqCollectContent_UNUSED() {
   // Read back all edited values from the review into the _aiSeqActivities structure
   const result = {};
-  Object.keys(SEQ_AI_SECTIONS).forEach(sKey => {
+  Object.keys(_seqAiSections()).forEach(sKey => {
     result[sKey] = (_aiSeqActivities[sKey] || []).map((item, i) => {
       const get = (field) => {
         const el = document.querySelector(`[data-section="${sKey}"][data-idx="${i}"][data-field="${field}"]`);
@@ -11072,12 +11196,14 @@ function _aiSeqCollectContent_UNUSED() {
 
 function aiSeqPopulate() {
   const activities = _aiSeqCollectContent();
-  const totalCount = Object.values(activities).reduce((s, arr) => s + arr.length, 0);
+  // Count actual exercises to be created (Flashcard entries with N cards spawn N exercises)
+  const totalCount = Object.values(activities).reduce((s, arr) =>
+    s + arr.reduce((s2, item) => s2 + (item.type === 'Flashcard' && item.content?.cards?.length > 1 ? item.content.cards.length : 1), 0), 0);
   if (!totalCount) { alert('Aucune activité à créer.'); return; }
   if (!confirm(`Cela va ajouter ${totalCount} activité(s) à votre séquence. Continuer ?`)) return;
 
   // Read DOM order from content board (respects drag-reordering)
-  Object.entries(SEQ_AI_SECTIONS).forEach(([sKey]) => {
+  Object.entries(_seqAiSections()).forEach(([sKey]) => {
     const container = document.getElementById(`contentSection_${sKey}`);
     const orderedIds = container
       ? [...container.querySelectorAll('[data-ex-id]')].map(el => el.dataset.exId)
@@ -11181,25 +11307,29 @@ function _aiSeqPopulateActivity(id, item, sKey) {
     }
 
   } else if (item.type === 'Flashcard') {
-    const cards = (c.cards && c.cards.length > 0) ? c.cards : [{ front_text: c.front_text, back_text: c.back_text }];
-    // Populate the already-created exercise with the first card
-    setVal(`flashcardType_${id}`, item.subtype || 'courte');
-    updateFlashcardFields(id);
-    setVal(`consigne_${id}`, activityTypesConfig['Flashcard']?.defaultConsigne || '');
-    setVal(`front_${id}`, cards[0].front_text);
-    setVal(`back_${id}`, cards[0].back_text);
-    // Add one extra exercise per additional card
+    // c.cards is always an array (built by _aiSeqCollectContent from card_front_N / card_back_N fields)
+    const cards = (c.cards && c.cards.length > 0) ? c.cards : [{ front_text: '', back_text: '' }];
+    console.log(`[AI inject Flashcard] id=${id} subtype=${item.subtype} cards(${cards.length}):`, JSON.parse(JSON.stringify(cards)));
+
+    const _populateFlashcard = (fId, card) => {
+      setVal(`flashcardType_${fId}`, item.subtype || 'courte');
+      updateFlashcardFields(fId);
+      setVal(`consigne_${fId}`, activityTypesConfig['Flashcard']?.defaultConsigne || '');
+      setVal(`front_${fId}`, card.front_text);
+      setVal(`back_${fId}`, card.back_text);
+    };
+
+    // First card goes into the already-created exercise
+    _populateFlashcard(id, cards[0]);
+
+    // Extra cards each get their own new exercise
     if (sKey && cards.length > 1) {
       cards.slice(1).forEach(card => {
         addExercice(sKey);
         const extraId = `${sKey}_${sections[sKey].count}`;
         setVal(`type_${extraId}`, 'Flashcard');
         updateFields(extraId);
-        setVal(`flashcardType_${extraId}`, item.subtype || 'courte');
-        updateFlashcardFields(extraId);
-        setVal(`consigne_${extraId}`, activityTypesConfig['Flashcard']?.defaultConsigne || '');
-        setVal(`front_${extraId}`, card.front_text);
-        setVal(`back_${extraId}`, card.back_text);
+        _populateFlashcard(extraId, card);
       });
     }
 
