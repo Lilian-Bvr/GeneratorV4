@@ -1,8 +1,7 @@
 ---
 deployment:
   tasks:
-    - export BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    - if [ "$BRANCH" = "main" ]; then export DEPLOYPATH=/home/sequenceur/public_html; else export DEPLOYPATH=/home/sequenceur/public_html/experimental; fi
+    - export DEPLOYPATH=/home/sequenceur/public_html
     - mkdir -p $DEPLOYPATH
     - /bin/rsync -a --exclude='api/config.php' --exclude='.git' --exclude='.cpanel.yml' --exclude='scorm-packages/' --exclude='data/' ./ $DEPLOYPATH/
     - /bin/chmod 755 $DEPLOYPATH
