@@ -164,6 +164,11 @@ try {
     getDB()->exec('ALTER TABLE files ADD COLUMN modele_saved_at INT UNSIGNED DEFAULT NULL');
 } catch (PDOException $e) { /* Column already exists — ignore */ }
 
+// Auto-migration: extend type ENUM to include 'court'
+try {
+    getDB()->exec("ALTER TABLE files MODIFY COLUMN type ENUM('sequence','flashcards','court') NOT NULL DEFAULT 'sequence'");
+} catch (PDOException $e) { /* Already up to date — ignore */ }
+
 // --- AUTH ENDPOINTS ---
 
 if ($path === '/auth/login' && $method === 'POST') {
@@ -218,7 +223,7 @@ if ($path === '/auth/status' && $method === 'GET') {
 if ($path === '/api/modeles/timestamps' && $method === 'GET') {
     requireAuth();
     $base = __DIR__ . '/../Modele/';
-    $names = ['Modele', 'Modele_Flashcards', 'Modele_QuickPreview'];
+    $names = ['Modele', 'Modele_Court', 'Modele_Flashcards', 'Modele_QuickPreview'];
     $result = [];
     foreach ($names as $n) {
         $f = $base . $n . '.zip';
@@ -552,11 +557,57 @@ VOCABPROMPT;
         }
 
         $s1n = intval($counts['S1'] ?? 5);
-        $s2n = intval($counts['S2'] ?? 5);
-        $s3n = intval($counts['S3'] ?? 5);
-        $s4n = intval($counts['S4'] ?? 5);
+        $isCourtMode = !isset($counts['S2']);
 
-        $prompt = <<<OUTLINEPROMPT
+        if ($isCourtMode) {
+            // ── Séquence courte : une seule section "Pratique", exercices de drill ──
+            $prompt = <<<OUTLINEPROMPT
+Tu es un expert en conception pédagogique pour l'apprentissage du français langue seconde en contexte bancaire professionnel.
+
+NIVEAU : $levelDesc
+
+THÈME : $theme$contraintesBlock
+
+LISTE DE VOCABULAIRE CIBLE :
+$vocabDesc
+
+TÂCHE : Conçois le plan d'une séquence courte de pratique intensive. Il s'agit d'une seule section S1 "Pratique" contenant exactement $s1n exercices de drill — pas d'introduction théorique, uniquement de la pratique active des expressions cibles.
+
+SECTION :
+- S1 Pratique ($s1n exercices) : exercices de drill variés qui font pratiquer les expressions directement — QCU, QCM, True or false, Matching, Complete, Flashcard, Dialogue. Pas de Leçon sauf en dernière position si nécessaire pour récapituler. Varier les types au maximum.
+
+TYPES D'ACTIVITÉS DISPONIBLES :
+- "Leçon" subtype "simple" : présente 1 expression + traduction + 1 exemple. Uniquement en dernière position si nécessaire.
+- "True or false" subtype null : 1 audio (2-3 répliques courtes) + UNE SEULE affirmation à évaluer vrai/faux.
+- "QCU" subtype null : 1 audio + 1 question de compréhension + 4 réponses (1 correcte).
+- "QCM" subtype null : 1 audio + 1 question + 4 réponses (2-3 correctes).
+- "Matching" subtype "texte-texte" : 4 paires texte–texte à associer, pas d'audio.
+- "Matching" subtype "audio-texte" : 4 paires audio–texte à associer.
+- "Matching" subtype "audio-audio" : 4 paires audio–audio à associer.
+- "Complete" subtype "options" : 1 audio + 1 texte à trous avec options à choisir.
+- "Complete" subtype "reconstruit" : 1 audio + 1 phrase à reconstituer en remettant des mots dans l'ordre.
+- "Flashcard" subtype "courte" : carte recto/verso courte — concept ou mot → réponse ou traduction courte.
+- "Flashcard" subtype "longue" : carte recto/verso — expression → phrase d'usage complète en contexte.
+- "Dialogue" subtype null : script de dialogue entre 2-4 interlocuteurs, 4-10 répliques.
+
+RÈGLES :
+- Varier les types — éviter deux fois le même type consécutivement
+- Ne jamais commencer par une Leçon
+- Chaque exercice cible exactement 1 expression (champ vocab_ids), sauf Matching qui peut en cibler jusqu'à 4
+- Toutes les expressions doivent apparaître au moins une fois
+- Le champ "focus" décrit UNIQUEMENT le scénario/contexte en max 12 mots
+
+RÉPONSE : JSON uniquement, sans balises markdown.
+Format exact :
+{"outline":{"S1":[{"id":"s1_1","type":"QCU","subtype":null,"focus":"Comprendre une annonce orale de la BCE","vocab_ids":["v1"]},...]}}
+OUTLINEPROMPT;
+        } else {
+            // ── Séquence complète : 4 sections ──
+            $s2n = intval($counts['S2'] ?? 5);
+            $s3n = intval($counts['S3'] ?? 5);
+            $s4n = intval($counts['S4'] ?? 5);
+
+            $prompt = <<<OUTLINEPROMPT
 Tu es un expert en conception pédagogique pour l'apprentissage du français langue seconde en contexte bancaire professionnel.
 
 NIVEAU : $levelDesc
@@ -604,6 +655,7 @@ RÉPONSE : JSON uniquement, sans balises markdown.
 Format exact :
 {"outline":{"S1":[{"id":"s1_1","type":"QCU","subtype":null,"focus":"Comprendre une annonce orale de la BCE","vocab_ids":["v1"]},...],"S2":[...],"S3":[...],"S4":[...]}}
 OUTLINEPROMPT;
+        }
 
         $body = json_encode([
             'model'      => 'claude-sonnet-4-6',
@@ -663,7 +715,10 @@ OUTLINEPROMPT;
         }
 
         // Build full outline summary for coherence
-        $sectionLabels = ['S1' => 'Découvre', 'S2' => 'Pratique', 'S3' => 'Approfondis', 'S4' => 'Consolide'];
+        $isCourtMode = count($outline) === 1 && isset($outline['S1']) && !isset($outline['S2']);
+        $sectionLabels = $isCourtMode
+            ? ['S1' => 'Pratique']
+            : ['S1' => 'Découvre', 'S2' => 'Pratique', 'S3' => 'Approfondis', 'S4' => 'Consolide'];
         $outlineDesc = '';
         foreach ($outline as $sKey => $exList) {
             $outlineDesc .= "$sKey — {$sectionLabels[$sKey]}:\n";
@@ -1375,7 +1430,7 @@ if (preg_match('#^/api/projects/([a-f0-9\-]+)/files/([a-f0-9\-]+)/upgrade-modele
     }
 
     // Determine which Modele to use
-    $modeleName = $file['type'] === 'flashcards' ? 'Modele_Flashcards' : 'Modele';
+    $modeleName = $file['type'] === 'flashcards' ? 'Modele_Flashcards' : ($file['type'] === 'court' ? 'Modele_Court' : 'Modele');
     $modeleZip  = __DIR__ . '/../Modele/' . $modeleName . '.zip';
     $storedZip  = fileZipPath($projectId, $fileId);
 
@@ -1433,7 +1488,7 @@ if (preg_match('#^/api/projects/([a-f0-9\-]+)/files/([a-f0-9\-]+)/upgrade-modele
 if (preg_match('#^/api/admin/modeles/([a-zA-Z0-9_\-]+)$#', $path, $m) && $method === 'POST') {
     requireAdmin();
 
-    $allowed = ['Modele', 'Modele_Flashcards', 'Modele_QuickPreview'];
+    $allowed = ['Modele', 'Modele_Court', 'Modele_Flashcards', 'Modele_QuickPreview'];
     $name = $m[1];
     if (!in_array($name, $allowed, true)) {
         jsonResponse(['error' => 'Nom de modèle invalide'], 400);

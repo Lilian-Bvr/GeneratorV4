@@ -134,6 +134,22 @@
 
           <div class="card">
             <div class="card-body">
+              <h6 class="card-title mb-1">Modele_Court.zip</h6>
+              <p class="text-muted small mb-2">Modèle séquence courte (S1 uniquement) — <span id="modeleDate_Modele_Court" class="text-muted">…</span></p>
+              <div class="d-flex align-items-center gap-2">
+                <input type="file" accept=".zip" id="modeleFileInput_Modele_Court" style="display:none;"
+                  onchange="pbUploadModele('Modele_Court', this)">
+                <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('modeleFileInput_Modele_Court').click()">
+                  <i class="bi bi-folder2-open me-1"></i> Choisir un fichier
+                </button>
+                <span id="modeleFileName_Modele_Court" class="text-muted small">Aucun fichier sélectionné</span>
+              </div>
+              <div id="modeleStatus_Modele_Court" class="mt-2"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
               <h6 class="card-title mb-1">Modele_Flashcards.zip</h6>
               <p class="text-muted small mb-2">Modèle jeu de cartes — <span id="modeleDate_Modele_Flashcards" class="text-muted">…</span></p>
               <div class="d-flex align-items-center gap-2">
@@ -336,6 +352,7 @@
             <label class="form-label fw-bold">Type</label>
             <select id="fbNewFileType" class="form-select">
               <option value="sequence">Séquence</option>
+              <option value="court">Séquence courte</option>
               <option value="flashcards">Flashcards</option>
             </select>
           </div>
@@ -811,7 +828,7 @@
           <nav class="nav-sections">
             
             <!-- Section 1: Découvre -->
-            <div class="section-group mb-2">
+            <div id="section-group-S1" class="section-group mb-2">
               <div class="section-header" data-section="S1" onclick="showSectionOverview('S1')">
                 <i class="bi bi-chevron-right section-toggle" onclick="event.stopPropagation(); toggleSection('S1')"></i>
                 <i class="bi bi-1-circle text-primary me-2"></i>
@@ -829,7 +846,7 @@
             </div>
 
             <!-- Section 2: Pratique -->
-            <div class="section-group mb-2">
+            <div class="section-group mb-2" id="section-group-S2">
               <div class="section-header" data-section="S2" onclick="showSectionOverview('S2')">
                 <i class="bi bi-chevron-right section-toggle" onclick="event.stopPropagation(); toggleSection('S2')"></i>
                 <i class="bi bi-2-circle text-success me-2"></i>
@@ -845,7 +862,7 @@
             </div>
 
             <!-- Section 3: Approfondis -->
-            <div class="section-group mb-2">
+            <div class="section-group mb-2" id="section-group-S3">
               <div class="section-header" data-section="S3" onclick="showSectionOverview('S3')">
                 <i class="bi bi-chevron-right section-toggle" onclick="event.stopPropagation(); toggleSection('S3')"></i>
                 <i class="bi bi-3-circle text-warning me-2"></i>
@@ -861,7 +878,7 @@
             </div>
 
             <!-- Section 4: Consolide -->
-            <div class="section-group mb-2">
+            <div class="section-group mb-2" id="section-group-S4">
               <div class="section-header" data-section="S4" onclick="showSectionOverview('S4')">
                 <i class="bi bi-chevron-right section-toggle" onclick="event.stopPropagation(); toggleSection('S4')"></i>
                 <i class="bi bi-4-circle text-danger me-2"></i>
@@ -984,18 +1001,18 @@
                 <div class="small fw-bold text-muted mb-2">NOMBRE D'EXERCICES PAR SECTION</div>
                 <div class="row g-2">
                   <div class="col-6 col-md-3">
-                    <label class="form-label small mb-1 text-primary fw-bold">S1 — Découvre</label>
+                    <label id="seqAiLabelS1" class="form-label small mb-1 text-primary fw-bold">S1 — Découvre</label>
                     <input type="number" id="seqAiCountS1" class="form-control form-control-sm" value="5" min="2" max="12">
                   </div>
-                  <div class="col-6 col-md-3">
+                  <div id="seqAiCountCol_S2" class="col-6 col-md-3">
                     <label class="form-label small mb-1 text-success fw-bold">S2 — Pratique</label>
                     <input type="number" id="seqAiCountS2" class="form-control form-control-sm" value="5" min="2" max="12">
                   </div>
-                  <div class="col-6 col-md-3">
+                  <div id="seqAiCountCol_S3" class="col-6 col-md-3">
                     <label class="form-label small mb-1 text-warning fw-bold">S3 — Approfondis</label>
                     <input type="number" id="seqAiCountS3" class="form-control form-control-sm" value="5" min="2" max="12">
                   </div>
-                  <div class="col-6 col-md-3">
+                  <div id="seqAiCountCol_S4" class="col-6 col-md-3">
                     <label class="form-label small mb-1 text-danger fw-bold">S4 — Consolide</label>
                     <input type="number" id="seqAiCountS4" class="form-control form-control-sm" value="5" min="2" max="12">
                   </div>
