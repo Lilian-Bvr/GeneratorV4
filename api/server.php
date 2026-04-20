@@ -1448,19 +1448,22 @@ if (preg_match('#^/api/projects/([a-f0-9\-]+)/files/([a-f0-9\-]+)/upgrade-modele
     if ($shell->open($modeleZip) !== true)         { $src->close();   jsonResponse(['error' => 'Impossible d\'ouvrir le modèle'], 500); }
     if ($out->open($tmpFile, ZipArchive::OVERWRITE) !== true) { $src->close(); $shell->close(); jsonResponse(['error' => 'Impossible de créer le zip temporaire'], 500); }
 
-    // 1. Everything from Modele except Ressources_Sequences/
+    // The content folder differs by file type
+    $contentFolder = $file['type'] === 'flashcards' ? 'Ressources_FCs/' : 'Ressources_Sequences/';
+
+    // 1. Everything from Modele except the content folder
     for ($i = 0; $i < $shell->numFiles; $i++) {
         $name = $shell->getNameIndex($i);
-        if (strpos($name, 'Ressources_Sequences/') === 0) continue;
+        if (strpos($name, $contentFolder) === 0) continue;
         $content = $shell->getFromIndex($i);
         if ($content !== false) $out->addFromString($name, $content);
     }
     $shell->close();
 
-    // 2. Ressources_Sequences/ from stored project zip
+    // 2. Content folder from stored project zip
     for ($i = 0; $i < $src->numFiles; $i++) {
         $name = $src->getNameIndex($i);
-        if (strpos($name, 'Ressources_Sequences/') !== 0) continue;
+        if (strpos($name, $contentFolder) !== 0) continue;
         $content = $src->getFromIndex($i);
         if ($content !== false) $out->addFromString($name, $content);
     }
