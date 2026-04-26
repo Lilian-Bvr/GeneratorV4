@@ -4,9 +4,20 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
 
 // ======== CORS ========
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+$allowedOrigins = defined('ALLOWED_ORIGINS') ? ALLOWED_ORIGINS : [];
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowedOrigins, true)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+} elseif (empty($allowedOrigins)) {
+    header('Access-Control-Allow-Origin: *');
+}
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS, DELETE, PATCH');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
+
+// ======== SECURITY HEADERS ========
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: SAMEORIGIN');
+header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -16,8 +27,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // ======== HELPERS ========
 
 function extractToken() {
-    // Query param (used for direct-link downloads)
-    if (!empty($_GET['token'])) return $_GET['token'];
     // Standard header
     $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
     if (strpos($auth, 'Bearer ') === 0) {
@@ -169,53 +178,29 @@ try {
     getDB()->exec("ALTER TABLE files MODIFY COLUMN type ENUM('sequence','flashcards','court') NOT NULL DEFAULT 'sequence'");
 } catch (PDOException $e) { /* Already up to date — ignore */ }
 
-// --- AUTH ENDPOINTS ---
+// Auto-migration: login_attempts table for rate limiting
+try {
+    getDB()->exec("
+        CREATE TABLE IF NOT EXISTS login_attempts (
+            ip          VARCHAR(45)  NOT NULL,
+            attempted_at INT UNSIGNED NOT NULL,
+            INDEX idx_ip_time (ip, attempted_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+} catch (PDOException $e) { /* Ignore */ }
 
-if ($path === '/auth/login' && $method === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $password = $input['password'] ?? '';
+// Auto-migration: env column for environment separation
+try {
+    getDB()->exec("ALTER TABLE projects ADD COLUMN env ENUM('production','staging') NOT NULL DEFAULT 'production'");
+} catch (PDOException $e) { /* Already exists — ignore */ }
 
-    if (!COMPANY_PASSWORD_HASH) {
-        jsonResponse(['success' => false, 'error' => 'Authentification non configurée sur le serveur'], 503);
-    }
+// Detect current environment based on install path
+define('APP_ENV', strpos(__DIR__, 'experimental') !== false ? 'staging' : 'production');
 
-    if (password_verify($password, COMPANY_PASSWORD_HASH)) {
-        $token = generateToken();
-        $sessions = loadSessions();
-        $sessions[$token] = [
-            'created_at' => time(),
-            'expires_at' => time() + SESSION_EXPIRY
-        ];
-        saveSessions($sessions);
-
-        jsonResponse([
-            'success' => true,
-            'token' => $token,
-            'companyName' => COMPANY_NAME,
-            'expiresIn' => SESSION_EXPIRY * 1000
-        ]);
-    } else {
-        jsonResponse(['success' => false, 'error' => 'Mot de passe incorrect'], 401);
-    }
-}
-
-if ($path === '/auth/logout' && $method === 'POST') {
-    $token = extractToken();
-    if ($token) {
-        $sessions = loadSessions();
-        unset($sessions[$token]);
-        saveSessions($sessions);
-    }
-    jsonResponse(['success' => true]);
-}
-
-if ($path === '/auth/status' && $method === 'GET') {
-    $token = extractToken();
-    $valid = validateSession($token);
-    jsonResponse([
-        'authenticated' => $valid,
-        'companyName' => $valid ? COMPANY_NAME : null
-    ]);
+// --- DISABLED legacy /auth/* (use /api/users/* instead) ---
+if (strpos($path, '/auth/') === 0) {
+    error_log("Deprecated /auth/* hit: $method $path from " . ($_SERVER['REMOTE_ADDR'] ?? '?'));
+    jsonResponse(['error' => 'Endpoint deprecated. Use /api/users/* instead.'], 410);
 }
 
 // --- MODELE TIMESTAMPS ---
@@ -858,6 +843,8 @@ function cleanOldPackages() {
 }
 
 if ($path === '/upload' && $method === 'POST') {
+    requireAuth();
+
     // Create scorm-packages directory if needed
     if (!is_dir(SCORM_DIR)) {
         mkdir(SCORM_DIR, 0755, true);
@@ -875,14 +862,21 @@ if ($path === '/upload' && $method === 'POST') {
     $zipPath = $packageDir . '/package.zip';
     file_put_contents($zipPath, $zipData);
 
-    // Extract the zip
+    // Extract the zip — check for Zip Slip before extracting
     $zip = new ZipArchive();
-    if ($zip->open($zipPath) === true) {
-        $zip->extractTo($packageDir);
-        $zip->close();
-    } else {
+    if ($zip->open($zipPath) !== true) {
         jsonResponse(['success' => false, 'error' => 'Failed to extract zip'], 500);
     }
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $entry = str_replace('\\', '/', $zip->getNameIndex($i));
+        if (strpos($entry, '../') !== false || strpos($entry, './') === 0 || substr($entry, 0, 1) === '/') {
+            $zip->close();
+            deleteDirectory($packageDir);
+            jsonResponse(['success' => false, 'error' => 'Archive ZIP invalide'], 400);
+        }
+    }
+    $zip->extractTo($packageDir);
+    $zip->close();
 
     // Find the main HTML file
     $mainHtml = 'story.html';
@@ -954,14 +948,31 @@ if ($path === '/api/users/login' && $method === 'POST') {
 
     if (!$email || !$password) jsonResponse(['error' => 'Email et mot de passe requis'], 400);
 
-    $pdo  = getDB();
+    $pdo = getDB();
+    $ip  = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $window = time() - 600; // 10 minutes
+
+    // Clean old attempts
+    $pdo->prepare('DELETE FROM login_attempts WHERE attempted_at < ?')->execute([$window]);
+
+    // Check rate limit (10 attempts per 10 min per IP)
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND attempted_at >= ?');
+    $stmt->execute([$ip, $window]);
+    if ((int)$stmt->fetchColumn() >= 10) {
+        jsonResponse(['error' => 'Trop de tentatives. Réessayez dans 10 minutes.'], 429);
+    }
+
     $stmt = $pdo->prepare('SELECT id, name, email, password_hash, role FROM users WHERE email = ?');
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
     if (!$user || !password_verify($password, $user['password_hash'])) {
+        $pdo->prepare('INSERT INTO login_attempts (ip, attempted_at) VALUES (?, ?)')->execute([$ip, time()]);
         jsonResponse(['error' => 'Email ou mot de passe incorrect'], 401);
     }
+
+    // Successful login — clear attempts for this IP
+    $pdo->prepare('DELETE FROM login_attempts WHERE ip = ?')->execute([$ip]);
 
     // Create session
     $token     = bin2hex(random_bytes(32));
@@ -1073,13 +1084,16 @@ if ($path === '/api/projects' && $method === 'GET') {
     $pdo  = getDB();
 
     if ($user['role'] === 'admin') {
-        $projects = $pdo->query('
+        $stmt = $pdo->prepare('
             SELECT p.*, u.name AS created_by_name,
                    (SELECT COUNT(*) FROM files f WHERE f.project_id = p.id) AS file_count
             FROM projects p
             JOIN users u ON u.id = p.created_by
+            WHERE p.env = ?
             ORDER BY p.updated_at DESC
-        ')->fetchAll();
+        ');
+        $stmt->execute([APP_ENV]);
+        $projects = $stmt->fetchAll();
     } else {
         $stmt = $pdo->prepare('
             SELECT p.*, u.name AS created_by_name,
@@ -1087,9 +1101,10 @@ if ($path === '/api/projects' && $method === 'GET') {
             FROM projects p
             JOIN users u ON u.id = p.created_by
             JOIN project_assignments pa ON pa.project_id = p.id AND pa.user_id = ?
+            WHERE p.env = ?
             ORDER BY p.updated_at DESC
         ');
-        $stmt->execute([$user['id']]);
+        $stmt->execute([$user['id'], APP_ENV]);
         $projects = $stmt->fetchAll();
     }
     jsonResponse(['projects' => $projects]);
@@ -1106,8 +1121,8 @@ if ($path === '/api/projects' && $method === 'POST') {
 
     $id  = generateUUID();
     $pdo = getDB();
-    $pdo->prepare('INSERT INTO projects (id, name, description, created_by) VALUES (?, ?, ?, ?)')
-        ->execute([$id, $name, $desc, $user['id']]);
+    $pdo->prepare('INSERT INTO projects (id, name, description, created_by, env) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$id, $name, $desc, $user['id'], APP_ENV]);
 
     $dir = projectDir($id);
     if (!is_dir($dir)) mkdir($dir, 0755, true);
@@ -1287,8 +1302,6 @@ if (preg_match('#^/api/projects/([a-f0-9\-]+)/files$#', $path, $m) && $method ==
         // If not the author, create a fork instead
         if ((int)$existing['author_id'] !== (int)$user['id']) {
             $newId = generateUUID();
-            $forkName = $name . ' (copie de ' . $existing['author_name'] . ')';
-            // Fetch author name for fork label
             $au = $pdo->prepare('SELECT name FROM users WHERE id = ?');
             $au->execute([$existing['author_id']]);
             $authorRow = $au->fetch();

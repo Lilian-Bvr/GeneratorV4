@@ -777,7 +777,7 @@ async function fbPreviewFile(fileId) {
     updateLoadingStatus('Upload vers le serveur...', 60);
     const upRes = await fetch(`${SERVER_URL}/upload`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/zip' },
+      headers: { 'Content-Type': 'application/zip', ...authHeaders() },
       body: zipBlob
     });
     if (!upRes.ok) throw new Error(`Erreur serveur: ${upRes.status}`);
@@ -830,11 +830,18 @@ async function fbDuplicateFile(fileId, name) {
   else alert(data.error);
 }
 
-function fbDownloadFile(fileId, name) {
+async function fbDownloadFile(fileId, name) {
+  const res = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files/${fileId}/download`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) { alert('Erreur lors du téléchargement'); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = `${SERVER_URL}/api/projects/${_fbProjectId}/files/${fileId}/download?token=${encodeURIComponent(sessionToken)}`;
+  a.href = url;
   a.download = name + '.zip';
   a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function fbDeleteFile(fileId, name) {
@@ -7704,9 +7711,7 @@ async function previewWithLocalServer() {
     updateLoadingStatus('Upload vers le serveur...', 60);
     const response = await fetch(`${SERVER_URL}/upload`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/zip'
-      },
+      headers: { 'Content-Type': 'application/zip', ...authHeaders() },
       body: zipBlob
     });
     if (!response.ok) {
@@ -7986,7 +7991,7 @@ async function quickPreview(id) {
     const zipBlob = await zipObject.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     const response = await fetch(`${SERVER_URL}/upload`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/zip' },
+      headers: { 'Content-Type': 'application/zip', ...authHeaders() },
       body: zipBlob
     });
     if (!response.ok) throw new Error(`Server error: ${response.status}`);
@@ -9843,7 +9848,7 @@ async function previewCartes() {
     updateLoadingStatus('Upload vers le serveur...', 60);
     const response = await fetch(`${SERVER_URL}/upload`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/zip' },
+      headers: { 'Content-Type': 'application/zip', ...authHeaders() },
       body: zipBlob
     });
     if (!response.ok) throw new Error(`Server error: ${response.status}`);
