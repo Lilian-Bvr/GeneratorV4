@@ -189,6 +189,14 @@ try {
     ");
 } catch (PDOException $e) { /* Ignore */ }
 
+// Auto-migration: env column for environment separation
+try {
+    getDB()->exec("ALTER TABLE projects ADD COLUMN env ENUM('production','staging') NOT NULL DEFAULT 'production'");
+} catch (PDOException $e) { /* Already exists — ignore */ }
+
+// Detect current environment based on install path
+define('APP_ENV', strpos(__DIR__, 'experimental') !== false ? 'staging' : 'production');
+
 // --- DISABLED legacy /auth/* (use /api/users/* instead) ---
 if (strpos($path, '/auth/') === 0) {
     error_log("Deprecated /auth/* hit: $method $path from " . ($_SERVER['REMOTE_ADDR'] ?? '?'));
@@ -1076,13 +1084,16 @@ if ($path === '/api/projects' && $method === 'GET') {
     $pdo  = getDB();
 
     if ($user['role'] === 'admin') {
-        $projects = $pdo->query('
+        $stmt = $pdo->prepare('
             SELECT p.*, u.name AS created_by_name,
                    (SELECT COUNT(*) FROM files f WHERE f.project_id = p.id) AS file_count
             FROM projects p
             JOIN users u ON u.id = p.created_by
+            WHERE p.env = ?
             ORDER BY p.updated_at DESC
-        ')->fetchAll();
+        ');
+        $stmt->execute([APP_ENV]);
+        $projects = $stmt->fetchAll();
     } else {
         $stmt = $pdo->prepare('
             SELECT p.*, u.name AS created_by_name,
@@ -1090,9 +1101,10 @@ if ($path === '/api/projects' && $method === 'GET') {
             FROM projects p
             JOIN users u ON u.id = p.created_by
             JOIN project_assignments pa ON pa.project_id = p.id AND pa.user_id = ?
+            WHERE p.env = ?
             ORDER BY p.updated_at DESC
         ');
-        $stmt->execute([$user['id']]);
+        $stmt->execute([$user['id'], APP_ENV]);
         $projects = $stmt->fetchAll();
     }
     jsonResponse(['projects' => $projects]);
@@ -1109,8 +1121,8 @@ if ($path === '/api/projects' && $method === 'POST') {
 
     $id  = generateUUID();
     $pdo = getDB();
-    $pdo->prepare('INSERT INTO projects (id, name, description, created_by) VALUES (?, ?, ?, ?)')
-        ->execute([$id, $name, $desc, $user['id']]);
+    $pdo->prepare('INSERT INTO projects (id, name, description, created_by, env) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$id, $name, $desc, $user['id'], APP_ENV]);
 
     $dir = projectDir($id);
     if (!is_dir($dir)) mkdir($dir, 0755, true);
