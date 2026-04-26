@@ -19,9 +19,26 @@ RedirectMatch 404 /\.git
 # Pass Authorization header to PHP (some Apache configs strip it)
 SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 
+# Block access to sensitive files
+<Files "generator_sessions.json">
+    Require all denied
+</Files>
+<Files ".htpasswd">
+    Require all denied
+</Files>
+<FilesMatch "\.(env|bak|sql)$">
+    Require all denied
+</FilesMatch>
+
+# Disable directory listing on /data/
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
+
 # Route /auth/* and /api/* to the PHP server
 # Skip rewrite if the file actually exists (e.g. setup.php)
 RewriteEngine On
+RewriteRule ^scorm-packages/.*\.(php|phtml|phar|php3|php4|php5|php7|phps|pl|py|jsp|asp|sh|cgi)$ - [F,L]
 RewriteRule ^auth/(.*)$ api/server.php [L,QSA]
 RewriteRule ^upload$ api/server.php [L,QSA]
 RewriteRule ^delete/(.*)$ api/server.php [L,QSA]
