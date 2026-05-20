@@ -1,4 +1,4 @@
-// ── Character counter ──────────────────────────────────────────────────────
+﻿// ── Character counter ──────────────────────────────────────────────────────
 (function () {
   const el = document.createElement('div');
   el.id = 'charCounter';
@@ -1328,7 +1328,7 @@ function removeExercice(section, index) {
   delete audiosData[`${section}_EX${index}`];
   delete videosData[`${section}_EX${index}`];
 
-  // 🗑️ Suppression de l’exercice dans le DOM
+  // 🗑️ Suppression de l'exercice dans le DOM
   const exo = document.getElementById(`exo_${id}`);
   if (exo) exo.remove();
 
@@ -1683,7 +1683,7 @@ function updateFields(id) {
 
       <label>Exemple</label>
       <textarea id="exemple_${id}" class="form-control mb-2"
-        placeholder="Phrase d'exemple">${devMode ? "Nous sommes très stressés par ce changement d’équipe." : ""}</textarea>
+        placeholder="Phrase d'exemple">${devMode ? "Nous sommes très stressés par ce changement d'équipe." : ""}</textarea>
 
       <label>Audio de l'exemple</label>
       ${createDualAudioButtons(
@@ -1942,7 +1942,7 @@ function updateMatchingFields(id) {
 
   // === Cas par défaut : aucun type sélectionné ===
   if (!type) {
-    html = `<p class="text-muted">Choisis d’abord un type d’appariement pour voir les options.</p>`;
+    html = `<p class="text-muted">Choisis d'abord un type d'appariement pour voir les options.</p>`;
   }
 
   container.innerHTML = html;
@@ -2057,7 +2057,7 @@ function updateCompleteFields(id) {
   `;
 
   if (!type) {
-    html = `<p class="text-muted">Choisis d’abord un type de complétion.</p>`;
+    html = `<p class="text-muted">Choisis d'abord un type de complétion.</p>`;
   }
 
   container.innerHTML = html;
@@ -2129,7 +2129,7 @@ function initCompleteOptionsPreview(id) {
         input.disabled = false;
         input.classList.remove("bg-light", "text-muted");
         input.title = "Ajouter un distracteur (mauvaise option)";
-        // ⚠️ On ne vide pas la valeur ici : l’auteur peut conserver ses distracteurs
+        // ⚠️ On ne vide pas la valeur ici : l'auteur peut conserver ses distracteurs
       }
     }
 
@@ -2199,7 +2199,7 @@ function initCompleteReconstruitPreview(id) {
         input.disabled = true;
         input.classList.remove("bg-light", "text-muted");
         input.title = "...";
-        // ⚠️ On ne vide pas la valeur ici : l’auteur peut conserver ses distracteurs
+        // ⚠️ On ne vide pas la valeur ici : l'auteur peut conserver ses distracteurs
       }
     }
 
@@ -2327,7 +2327,7 @@ function updateFlashExtraFields(id) {
 
   // --- Ajouter des phrases en exemples ---
   if (type === "Ajouter des phrases en exemples") {
-    html += `<h6>📝 Phrases en exemples (jusqu’à 5)</h6>`;
+    html += `<h6>📝 Phrases en exemples (jusqu'à 5)</h6>`;
     for (let i = 1; i <= 5; i++) {
       html += `
         <input type="text" id="flashExtraPhrase_${id}_${i}" class="form-control mb-2"
@@ -2338,7 +2338,7 @@ function updateFlashExtraFields(id) {
 
   // --- Ajouter des expressions complémentaires ---
   if (type === "Ajouter des expressions complémentaires") {
-    html += `<h6>💬 Expressions complémentaires (jusqu’à 5)</h6>`;
+    html += `<h6>💬 Expressions complémentaires (jusqu'à 5)</h6>`;
     for (let i = 1; i <= 5; i++) {
       html += `
         <div class="row g-2 align-items-start mb-2">
@@ -2377,7 +2377,7 @@ function handleFlashcardAudioUpload(event, id, side) {
         delete data.flashcard[side];
       }
 
-      // 🧹 Si la flashcard n’a plus de face audio, on supprime la clé flashcard
+      // 🧹 Si la flashcard n'a plus de face audio, on supprime la clé flashcard
       if (data.flashcard && Object.keys(data.flashcard).length === 0) {
         delete data.flashcard;
       }
@@ -2479,11 +2479,11 @@ function updateLessonFields(id) {
       </div>
 
       <div class="d-flex align-items-center gap-2 mb-1">
-        <label class="mb-0">Traduction de l’exemple en anglais</label>
+        <label class="mb-0">Traduction de l'exemple en anglais</label>
         <button type="button" class="btn btn-sm btn-outline-info" id="translateExBtn_${id}" data-exid="${id}" onclick="translateLessonExample(this.dataset.exid)">🌐 Traduire</button>
       </div>
       <input type="text" id="lessonExEn_${id}" class="form-control mb-2"
-        placeholder="Traduction de l’exemple" value="${devMode ? "I take a break after lunch." : ""}">
+        placeholder="Traduction de l'exemple" value="${devMode ? "I take a break after lunch." : ""}">
     `;
   }
 
@@ -3664,14 +3664,14 @@ function updateRecapFields(section) {
 
   else if (type === "Liste") {
     html = `
-      <p class="text-muted mb-3">Ajoutez jusqu’à 6 expressions avec un audio associé.</p>
+      <p class="text-muted mb-3">Ajoutez jusqu'à 6 expressions avec un audio associé.</p>
       ${Array.from({ length: 6 }).map((_, i) => `
         <div class="mb-4 p-3 border rounded bg-light">
           <label for="recapExpr_${section}_${i + 1}" class="form-label fw-bold">
             Expression ${i + 1}
           </label>
           <input type="text" id="recapExpr_${section}_${i + 1}" class="form-control mb-2"
-            placeholder="Saisissez ici le texte de l’expression ${i + 1}">
+            placeholder="Saisissez ici le texte de l'expression ${i + 1}">
           
           <label class="form-label small text-muted mb-1">Audio associé (facultatif)</label>
           <input type="file" accept="audio/*"
@@ -4116,7 +4116,7 @@ function buildResult() {
           }
         }
 
-        // ✅ On ne met Feedback que s’il existe vraiment
+        // ✅ On ne met Feedback que s'il existe vraiment
         const flashcardObject = {
           Type: "Flashcard",
           Flashcard_Type: flashType,
@@ -5089,7 +5089,7 @@ async function importZipProject(eventOrFile) {
           case "Matching":
             // --- 1️⃣ Sélectionne et applique le sous-type ---
             const matchType = exoData.Match_Type || "texte-texte";
-            console.log(`📘 [${id}] Type d’appariement détecté : ${matchType}`);
+            console.log(`📘 [${id}] Type d'appariement détecté : ${matchType}`);
 
             const matchTypeSelect = document.getElementById(`matchType_${id}`);
             if (matchTypeSelect) {
@@ -5357,7 +5357,7 @@ async function importZipProject(eventOrFile) {
               //console.log(`🔊 Toggle audio activé pour ${id}`);
             }
 
-            // Récupération de l’input file audio (unique)
+            // Récupération de l'input file audio (unique)
             const input = document.querySelector(`#exo_${id} input[type="file"][accept="audio/*"]`);
             if (input) {
               addAudioPreviewWithDelete(
@@ -5379,7 +5379,7 @@ async function importZipProject(eventOrFile) {
           if (exoData.Type === "QCU" && audios.main) {
             console.log(`🎧 [${id}] Ajout du preview audio (QCU)`);
 
-            // 🟩 Active automatiquement le toggle audio s’il existe
+            // 🟩 Active automatiquement le toggle audio s'il existe
             const audioSwitch = document.getElementById(`audioSwitch_${id}`);
             if (audioSwitch && !audioSwitch.checked) {
               audioSwitch.checked = true;
@@ -5409,7 +5409,7 @@ async function importZipProject(eventOrFile) {
           if (exoData.Type === "QCM" && audios.main) {
             console.log(`🎧 [${id}] Ajout du preview audio (QCM)`);
 
-            // 🟩 Active automatiquement le toggle audio s’il existe
+            // 🟩 Active automatiquement le toggle audio s'il existe
             const audioSwitch = document.getElementById(`audioSwitch_${id}`);
             if (audioSwitch && !audioSwitch.checked) {
               audioSwitch.checked = true;
@@ -5439,7 +5439,7 @@ async function importZipProject(eventOrFile) {
           if (exoData.Type === "Complete" && audios.main) {
             //console.log(`🎧 [${id}] Ajout du preview audio (Complete)`);
 
-            // 🟩 Active automatiquement le toggle audio s’il existe
+            // 🟩 Active automatiquement le toggle audio s'il existe
             const audioSwitch = document.getElementById(`audioSwitch_${id}`);
             if (audioSwitch && !audioSwitch.checked) {
               audioSwitch.checked = true;
@@ -5469,7 +5469,7 @@ async function importZipProject(eventOrFile) {
           if (exoData.Type === "Matching" && audios.main) {
             console.log(`🎧 [${id}] Ajout du preview audio (énoncé Matching)`);
 
-            // 🟩 Active le toggle audio s’il existe
+            // 🟩 Active le toggle audio s'il existe
             const audioSwitch = document.getElementById(`audioSwitch_${id}`);
             if (audioSwitch && !audioSwitch.checked) {
               audioSwitch.checked = true;
@@ -5638,7 +5638,7 @@ async function importZipProject(eventOrFile) {
                 );
                 console.log(`✅ Preview ajouté pour cellule ${ligne}.${col}`);
               } catch (e) {
-                console.warn(`⚠️ Impossible d’ajouter le preview pour ${inputId}`, e);
+                console.warn(`⚠️ Impossible d'ajouter le preview pour ${inputId}`, e);
               }
             }
 
@@ -5688,9 +5688,9 @@ async function importZipProject(eventOrFile) {
                     if (Object.keys(data).length === 0) delete audiosData[exKey];
                   }
                 );
-                console.log(`✅ [${id}] Preview audio ajouté pour l’expression FR`);
+                console.log(`✅ [${id}] Preview audio ajouté pour l'expression FR`);
               } else {
-                console.warn(`⚠️ [${id}] Aucun input trouvé pour l’audio de l’expression (${id})`);
+                console.warn(`⚠️ [${id}] Aucun input trouvé pour l'audio de l'expression (${id})`);
               }
             }
 
@@ -5707,9 +5707,9 @@ async function importZipProject(eventOrFile) {
                     if (Object.keys(data).length === 0) delete audiosData[exKey];
                   }
                 );
-                console.log(`✅ [${id}] Preview audio ajouté pour l’exemple FR`);
+                console.log(`✅ [${id}] Preview audio ajouté pour l'exemple FR`);
               } else {
-                console.warn(`⚠️ [${id}] Aucun input trouvé pour l’audio de l’exemple (${id})`);
+                console.warn(`⚠️ [${id}] Aucun input trouvé pour l'audio de l'exemple (${id})`);
               }
             }
           }
@@ -5718,7 +5718,7 @@ async function importZipProject(eventOrFile) {
           if (exoData.Type === "Dialogue" && audios.main) {
             console.log(`🎧 [${id}] Ajout du preview audio (Dialogue)`);
 
-            // 🟩 Active automatiquement le toggle audio s’il existe
+            // 🟩 Active automatiquement le toggle audio s'il existe
             const audioSwitch = document.getElementById(`audioSwitch_${id}`);
             if (audioSwitch && !audioSwitch.checked) {
               audioSwitch.checked = true;
@@ -5759,16 +5759,16 @@ async function importZipProject(eventOrFile) {
     updateSidebarExerciseList();
     hideImportOverlay(true);
   } catch (err) {
-    console.error("Erreur d’import :", err);
+    console.error("Erreur d'import :", err);
     hideImportOverlay(false);
-    alert("Erreur lors de l’import du projet !");
+    alert("Erreur lors de l'import du projet !");
   }
 }
 
 async function importJsonCourt(event) {
   const file = event.target.files[0];
   if (!file) return;
-  event.target.value = ‘’;
+  event.target.value = "";
 
   let data;
   try {
@@ -5784,58 +5784,58 @@ async function importJsonCourt(event) {
     isImporting = true;
 
     // Duration
-    const durInput = document.getElementById(‘duration_S1’);
+    const durInput = document.getElementById('duration_S1');
     if (durInput && data.Duration) durInput.value = data.Duration;
 
     // Sort exercise keys
     const exoKeys = Object.keys(data)
-      .filter(k => k.startsWith(‘EX’))
+      .filter(k => k.startsWith('EX'))
       .sort((a, b) => parseInt(a.slice(2)) - parseInt(b.slice(2)));
 
     for (const exoKey of exoKeys) {
       const exoData = data[exoKey];
-      addExercice(‘S1’);
-      const index = sections[‘S1’].count;
+      addExercice('S1');
+      const index = sections['S1'].count;
       const id = `S1_${index}`;
 
       const typeSelect = document.getElementById(`type_${id}`);
       if (typeSelect) {
-        typeSelect.value = exoData.Type || ‘’;
+        typeSelect.value = exoData.Type || '';
         updateFields(id);
       }
 
       const safeSet = (elId, val) => {
         const el = document.getElementById(elId);
-        if (el) el.value = val || ‘’;
+        if (el) el.value = val || '';
       };
 
       safeSet(`consigne_${id}`, exoData.Consigne);
       safeSet(`tentatives_${id}`, exoData.Tentatives);
 
       switch (exoData.Type) {
-        case ‘True or false’:
+        case 'True or false':
           safeSet(`enonce_${id}`, exoData.Affirmation);
           safeSet(`truth_${id}`, exoData.BonneReponse);
           break;
 
-        case ‘QCU’:
+        case 'QCU':
           safeSet(`enonce_${id}`, exoData.Question);
-          [‘A’, ‘B’, ‘C’, ‘D’].forEach(l => safeSet(`qcu${l}_${id}`, exoData.Reponses?.[l]));
+          ['A', 'B', 'C', 'D'].forEach(l => safeSet(`qcu${l}_${id}`, exoData.Reponses?.[l]));
           const qcuRadio = document.getElementById(`qcuRadio${exoData.BonneReponse}_${id}`);
           if (qcuRadio) qcuRadio.checked = true;
           break;
 
-        case ‘QCM’:
+        case 'QCM':
           safeSet(`enonce_${id}`, exoData.Question);
-          [‘A’, ‘B’, ‘C’, ‘D’].forEach(l => safeSet(`qcm${l}_${id}`, exoData.Reponses?.[l]));
+          ['A', 'B', 'C', 'D'].forEach(l => safeSet(`qcm${l}_${id}`, exoData.Reponses?.[l]));
           (exoData.Corrections || []).forEach(l => {
             const cb = document.getElementById(`qcmCheck_${l}_${id}`);
             if (cb) cb.checked = true;
           });
           break;
 
-        case ‘Matching’: {
-          const matchType = exoData.Match_Type || ‘texte-texte’;
+        case 'Matching': {
+          const matchType = exoData.Match_Type || 'texte-texte';
           const matchTypeEl = document.getElementById(`matchType_${id}`);
           if (matchTypeEl) {
             matchTypeEl.value = matchType;
@@ -5846,22 +5846,22 @@ async function importJsonCourt(event) {
           if (exoData.Paires) {
             requestAnimationFrame(() => {
               Object.entries(exoData.Paires).forEach(([key, pair]) => {
-                const idx = parseInt(key.replace(‘P’, ‘’), 10);
-                if (matchType === ‘texte-texte’) {
+                const idx = parseInt(key.replace('P', ''), 10);
+                if (matchType === 'texte-texte') {
                   const l = document.getElementById(`matchText_${id}_L${idx}`);
                   const r = document.getElementById(`matchText_${id}_R${idx}`);
-                  if (l) l.value = pair[`Match_L${idx}`] || ‘’;
-                  if (r) r.value = pair[`Match_R${idx}`] || ‘’;
-                } else if (matchType === ‘audio-texte’) {
+                  if (l) l.value = pair[`Match_L${idx}`] || '';
+                  if (r) r.value = pair[`Match_R${idx}`] || '';
+                } else if (matchType === 'audio-texte') {
                   const r = document.getElementById(`matchText_${id}_R${idx}`);
-                  if (r) r.value = pair[`Match_R${idx}`] || ‘’;
+                  if (r) r.value = pair[`Match_R${idx}`] || '';
                   const tl = document.getElementById(`matchTranscription_${id}_L${idx}`);
-                  if (tl) tl.value = pair[`Transcription_L${idx}`] || ‘’;
-                } else if (matchType === ‘audio-audio’) {
+                  if (tl) tl.value = pair[`Transcription_L${idx}`] || '';
+                } else if (matchType === 'audio-audio') {
                   const tl = document.getElementById(`matchTranscription_${id}_L${idx}`);
-                  if (tl) tl.value = pair[`Transcription_L${idx}`] || ‘’;
+                  if (tl) tl.value = pair[`Transcription_L${idx}`] || '';
                   const tr = document.getElementById(`matchTranscription_${id}_R${idx}`);
-                  if (tr) tr.value = pair[`Transcription_R${idx}`] || ‘’;
+                  if (tr) tr.value = pair[`Transcription_R${idx}`] || '';
                 }
               });
             });
@@ -5869,8 +5869,8 @@ async function importJsonCourt(event) {
           break;
         }
 
-        case ‘Complete’: {
-          const complType = exoData.Complete_Type || ‘options’;
+        case 'Complete': {
+          const complType = exoData.Complete_Type || 'options';
           const complTypeEl = document.getElementById(`completeType_${id}`);
           if (complTypeEl) {
             complTypeEl.value = complType;
@@ -5879,11 +5879,11 @@ async function importJsonCourt(event) {
           const tentCompl = document.getElementById(`tentatives_${id}`);
           if (tentCompl) tentCompl.value = exoData.Tentatives || 1;
           const texteField = document.getElementById(`texte_${id}`);
-          if (texteField) texteField.value = exoData.Texte_Complet || ‘’;
+          if (texteField) texteField.value = exoData.Texte_Complet || '';
           const preview = document.getElementById(`texteTronque_${id}`);
           if (preview && exoData.Texte_Incomplet) preview.textContent = exoData.Texte_Incomplet;
           (exoData.Options || []).forEach((opt, i) => safeSet(`opt${i + 1}_${id}`, opt));
-          if (complType === ‘options’) initCompleteOptionsPreview(id);
+          if (complType === 'options') initCompleteOptionsPreview(id);
           else initCompleteReconstruitPreview(id);
           break;
         }
@@ -5894,7 +5894,7 @@ async function importJsonCourt(event) {
       }
 
       if (exoData.Feedback) {
-        await importFeedback(exoData, id, ‘S1’, exoKey);
+        await importFeedback(exoData, id, 'S1', exoKey);
       }
     }
 
@@ -5903,7 +5903,7 @@ async function importJsonCourt(event) {
   } catch (err) {
     console.error("Erreur import JSON :", err);
     hideImportOverlay(false);
-    alert("Erreur lors de l’import du JSON !");
+    alert("Erreur lors de l'import du JSON !");
   } finally {
     isImporting = false;
   }
@@ -5973,7 +5973,7 @@ function toggleImageField(id) {
     const wrapper = container.querySelector(".image-wrapper");
 
     if (wrapper) {
-      const confirmDelete = confirm("Supprimer l’image associée à cet exercice ?");
+      const confirmDelete = confirm("Supprimer l'image associée à cet exercice ?");
       if (confirmDelete) {
         wrapper.remove();
         if (imagesData[key]) {
@@ -6057,7 +6057,7 @@ function toggleAudioField(id) {
     const wrapper = container.querySelector(".audio-wrapper");
 
     if (wrapper) {
-      const confirmDelete = confirm("Supprimer l’audio associé à cet exercice ?");
+      const confirmDelete = confirm("Supprimer l'audio associé à cet exercice ?");
       if (confirmDelete) {
         wrapper.remove();
         if (audiosData[key]?.main) {
@@ -6149,7 +6149,7 @@ function createFeedbackSelector(id, activityType, subType = null) {
     feedbacks = config?.feedback || [];
   }
 
-  // 🚫 Si aucune option de feedback n’est définie, on ne crée rien
+  // 🚫 Si aucune option de feedback n'est définie, on ne crée rien
   if (feedbacks.length === 0) {
     return "";
   }
@@ -6171,7 +6171,7 @@ function createFeedbackSelector(id, activityType, subType = null) {
     <div id="feedbackContainer_${id}"></div>
   `;
 
-  // ✅ Appel différé pour que le feedback initial s’affiche
+  // ✅ Appel différé pour que le feedback initial s'affiche
   setTimeout(() => {
     updateFeedbackFields(id);
   }, 0);
@@ -6192,23 +6192,23 @@ function createFullFeedback(id) {
 
       <div class="d-flex align-items-center gap-2 mb-1">
         <label class="mb-0">Traduction</label>
-        <button type="button" class="btn btn-sm btn-outline-info" id="translateTradBtn_${id}" onclick="translateFeedbackTrad(‘${id}’)">🌐 Traduire</button>
+        <button type="button" class="btn btn-sm btn-outline-info" id="translateTradBtn_${id}" onclick="translateFeedbackTrad('${id}')">🌐 Traduire</button>
       </div>
       <div id="feedbackTrad_${id}" class="quill-editor mb-2">${devMode ? "Je vais au bureau tous les jours." : ""}</div>
 
       <div class="form-check form-switch mb-2">
-        <input class="form-check-input" type="checkbox" id="feedbackAudioSwitch_${id}" onchange="toggleFeedbackAudio(‘${id}’)">
+        <input class="form-check-input" type="checkbox" id="feedbackAudioSwitch_${id}" onchange="toggleFeedbackAudio('${id}')">
         <label class="form-check-label" for="feedbackAudioSwitch_${id}">Ajouter un audio de la correction</label>
       </div>
 
       <div id="feedbackAudioContainer_${id}" style="display:none;">
         <label>Audio de la correction</label>
         <input type="file" accept="audio/*" class="form-control mb-2"
-          onchange="handleFeedbackAudioUpload(event, ‘${id}’)">
+          onchange="handleFeedbackAudioUpload(event, '${id}')">
       </div>
 
       <label>Phrase de feedback</label>
-      <div id="feedbackSimple_${id}" class="quill-editor mb-2">${devMode ? "Bravo, c’est la bonne phrase !" : ""}</div>
+      <div id="feedbackSimple_${id}" class="quill-editor mb-2">${devMode ? "Bravo, c'est la bonne phrase !" : ""}</div>
     </div>
   `;
 }
@@ -6310,7 +6310,7 @@ function toggleFeedbackAudio(id) {
     const wrapper = container.querySelector(".audio-wrapper");
 
     if (wrapper) {
-      const confirmDelete = confirm("Supprimer l’audio de correction ?");
+      const confirmDelete = confirm("Supprimer l'audio de correction ?");
       if (confirmDelete) {
         wrapper.remove();
         if (audiosData[key]?.feedback) {
@@ -6424,9 +6424,9 @@ async function importFeedback(exoData, id, section, exoKey) {
     fbSelect.value = fbType;
     //console.log(`📘 Type de feedback : ${fbType}`);
 
-    // 🔧 On force la construction du feedback (et on attend qu’elle soit prête)
+    // 🔧 On force la construction du feedback (et on attend qu'elle soit prête)
     updateFeedbackFields(id);
-    await new Promise(resolve => setTimeout(resolve, 200)); // délai min. pour laisser Quill s’initialiser
+    await new Promise(resolve => setTimeout(resolve, 200)); // délai min. pour laisser Quill s'initialiser
 
     // 🕐 Attente que les éditeurs Quill soient bien montés
     const waitForEditor = async (selector, timeout = 2000) => {
@@ -6488,7 +6488,7 @@ async function importFeedback(exoData, id, section, exoKey) {
     }
 
   } catch (err) {
-    console.error(`❌ Erreur d’import du feedback pour ${id} :`, err);
+    console.error(`❌ Erreur d'import du feedback pour ${id} :`, err);
   } finally {
     //console.groupEnd();
   }
