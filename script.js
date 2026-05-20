@@ -2840,10 +2840,10 @@ function initSelectOptions(id) {
 function handleImageUpload(event, id) {
   const file = event.target.files[0];
   if (!file) return;
-  event.target.value = '';
 
   // Use the existing cropping workflow
   openCrop(event, id);
+  event.target.value = ''; // reset after openCrop reads files[], allows re-selecting same file
 }
 
 //  CROP  //
