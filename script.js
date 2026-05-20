@@ -5765,6 +5765,150 @@ async function importZipProject(eventOrFile) {
   }
 }
 
+async function importJsonCourt(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = ‘’;
+
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch (e) {
+    alert("Fichier JSON invalide.");
+    return;
+  }
+
+  showImportOverlay();
+  try {
+    clearSequenceur();
+    isImporting = true;
+
+    // Duration
+    const durInput = document.getElementById(‘duration_S1’);
+    if (durInput && data.Duration) durInput.value = data.Duration;
+
+    // Sort exercise keys
+    const exoKeys = Object.keys(data)
+      .filter(k => k.startsWith(‘EX’))
+      .sort((a, b) => parseInt(a.slice(2)) - parseInt(b.slice(2)));
+
+    for (const exoKey of exoKeys) {
+      const exoData = data[exoKey];
+      addExercice(‘S1’);
+      const index = sections[‘S1’].count;
+      const id = `S1_${index}`;
+
+      const typeSelect = document.getElementById(`type_${id}`);
+      if (typeSelect) {
+        typeSelect.value = exoData.Type || ‘’;
+        updateFields(id);
+      }
+
+      const safeSet = (elId, val) => {
+        const el = document.getElementById(elId);
+        if (el) el.value = val || ‘’;
+      };
+
+      safeSet(`consigne_${id}`, exoData.Consigne);
+      safeSet(`tentatives_${id}`, exoData.Tentatives);
+
+      switch (exoData.Type) {
+        case ‘True or false’:
+          safeSet(`enonce_${id}`, exoData.Affirmation);
+          safeSet(`truth_${id}`, exoData.BonneReponse);
+          break;
+
+        case ‘QCU’:
+          safeSet(`enonce_${id}`, exoData.Question);
+          [‘A’, ‘B’, ‘C’, ‘D’].forEach(l => safeSet(`qcu${l}_${id}`, exoData.Reponses?.[l]));
+          const qcuRadio = document.getElementById(`qcuRadio${exoData.BonneReponse}_${id}`);
+          if (qcuRadio) qcuRadio.checked = true;
+          break;
+
+        case ‘QCM’:
+          safeSet(`enonce_${id}`, exoData.Question);
+          [‘A’, ‘B’, ‘C’, ‘D’].forEach(l => safeSet(`qcm${l}_${id}`, exoData.Reponses?.[l]));
+          (exoData.Corrections || []).forEach(l => {
+            const cb = document.getElementById(`qcmCheck_${l}_${id}`);
+            if (cb) cb.checked = true;
+          });
+          break;
+
+        case ‘Matching’: {
+          const matchType = exoData.Match_Type || ‘texte-texte’;
+          const matchTypeEl = document.getElementById(`matchType_${id}`);
+          if (matchTypeEl) {
+            matchTypeEl.value = matchType;
+            updateMatchingFields(id);
+          }
+          const tentMatch = document.getElementById(`tentatives_${id}`);
+          if (tentMatch) tentMatch.value = exoData.Tentatives || 9999;
+          if (exoData.Paires) {
+            requestAnimationFrame(() => {
+              Object.entries(exoData.Paires).forEach(([key, pair]) => {
+                const idx = parseInt(key.replace(‘P’, ‘’), 10);
+                if (matchType === ‘texte-texte’) {
+                  const l = document.getElementById(`matchText_${id}_L${idx}`);
+                  const r = document.getElementById(`matchText_${id}_R${idx}`);
+                  if (l) l.value = pair[`Match_L${idx}`] || ‘’;
+                  if (r) r.value = pair[`Match_R${idx}`] || ‘’;
+                } else if (matchType === ‘audio-texte’) {
+                  const r = document.getElementById(`matchText_${id}_R${idx}`);
+                  if (r) r.value = pair[`Match_R${idx}`] || ‘’;
+                  const tl = document.getElementById(`matchTranscription_${id}_L${idx}`);
+                  if (tl) tl.value = pair[`Transcription_L${idx}`] || ‘’;
+                } else if (matchType === ‘audio-audio’) {
+                  const tl = document.getElementById(`matchTranscription_${id}_L${idx}`);
+                  if (tl) tl.value = pair[`Transcription_L${idx}`] || ‘’;
+                  const tr = document.getElementById(`matchTranscription_${id}_R${idx}`);
+                  if (tr) tr.value = pair[`Transcription_R${idx}`] || ‘’;
+                }
+              });
+            });
+          }
+          break;
+        }
+
+        case ‘Complete’: {
+          const complType = exoData.Complete_Type || ‘options’;
+          const complTypeEl = document.getElementById(`completeType_${id}`);
+          if (complTypeEl) {
+            complTypeEl.value = complType;
+            updateCompleteFields(id);
+          }
+          const tentCompl = document.getElementById(`tentatives_${id}`);
+          if (tentCompl) tentCompl.value = exoData.Tentatives || 1;
+          const texteField = document.getElementById(`texte_${id}`);
+          if (texteField) texteField.value = exoData.Texte_Complet || ‘’;
+          const preview = document.getElementById(`texteTronque_${id}`);
+          if (preview && exoData.Texte_Incomplet) preview.textContent = exoData.Texte_Incomplet;
+          (exoData.Options || []).forEach((opt, i) => safeSet(`opt${i + 1}_${id}`, opt));
+          if (complType === ‘options’) initCompleteOptionsPreview(id);
+          else initCompleteReconstruitPreview(id);
+          break;
+        }
+      }
+
+      if (exoData.Audio_Enonce?.Transcription) {
+        safeSet(`audioTranscription_${id}`, exoData.Audio_Enonce.Transcription);
+      }
+
+      if (exoData.Feedback) {
+        await importFeedback(exoData, id, ‘S1’, exoKey);
+      }
+    }
+
+    updateSidebarExerciseList();
+    hideImportOverlay(true);
+  } catch (err) {
+    console.error("Erreur import JSON :", err);
+    hideImportOverlay(false);
+    alert("Erreur lors de l’import du JSON !");
+  } finally {
+    isImporting = false;
+  }
+}
+
 
 
 /*  ======  Fonctions utilitaires  ======  */

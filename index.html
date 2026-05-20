@@ -795,8 +795,14 @@
           <!-- Import Section -->
           <div class="mb-4">
             <label class="form-label fw-bold small text-muted">IMPORTER PROJET</label>
-            <input type="file" id="importZip" accept=".zip" class="form-control form-control-sm" 
+            <input type="file" id="importZip" accept=".zip" class="form-control form-control-sm"
                    onchange="importZipProject(event)">
+            <input type="file" id="importJsonCourtInput" accept=".json" style="display:none"
+                   onchange="importJsonCourt(event)">
+            <button class="btn btn-sm btn-outline-secondary w-100 mt-2"
+                    onclick="document.getElementById('importJsonCourtInput').click()">
+              <i class="bi bi-filetype-json me-1"></i> Importer JSON (séquence courte)
+            </button>
           </div>
 
           <!-- AI Generation Button -->
