@@ -223,8 +223,9 @@ function showProjectBrowser() {
   document.getElementById('pbWelcome').textContent = `Bonjour, ${currentUser?.name || ''} !`;
   const isAdmin = currentUser?.role === 'admin';
   document.getElementById('pbAdminBadge').style.display   = isAdmin ? 'inline-block' : 'none';
-  document.getElementById('pbAdminTab').style.display     = isAdmin ? 'list-item'    : 'none';
-  document.getElementById('pbModelesTab').style.display   = isAdmin ? 'list-item'    : 'none';
+  document.getElementById('pbAdminTab').style.display     = isAdmin ? 'list-item' : 'none';
+  document.getElementById('pbModelesTab').style.display   = isAdmin ? 'list-item' : 'none';
+  document.getElementById('pbApiKeysTab').style.display   = isAdmin ? 'list-item' : 'none';
   document.getElementById('pbNewProjectBtn').style.display = isAdmin ? 'inline-block' : 'none';
   pbShowTab('projects');
 }
@@ -233,12 +234,14 @@ function pbShowTab(tab) {
   document.getElementById('pbTabProjects').style.display = tab === 'projects' ? 'block' : 'none';
   document.getElementById('pbTabUsers').style.display    = tab === 'users'    ? 'block' : 'none';
   document.getElementById('pbTabModeles').style.display  = tab === 'modeles'  ? 'block' : 'none';
+  document.getElementById('pbTabApiKeys').style.display  = tab === 'apikeys'  ? 'block' : 'none';
   document.querySelectorAll('#pbTabs .nav-link').forEach(l => l.classList.remove('active'));
-  const tabMap = { projects: 0, users: 1, modeles: 2 };
+  const tabMap = { projects: 0, users: 1, modeles: 2, apikeys: 3 };
   document.querySelectorAll('#pbTabs .nav-link')[tabMap[tab] ?? 0]?.classList.add('active');
   if (tab === 'projects') pbLoadProjects();
   if (tab === 'users')    pbLoadUsers();
   if (tab === 'modeles')  pbLoadModeles();
+  if (tab === 'apikeys')  pbLoadApiKeys();
 }
 
 async function pbLoadModeles() {
@@ -537,6 +540,113 @@ async function pbDeleteUser(id, name) {
   const res = await fetch(`${SERVER_URL}/api/admin/users/${id}`, { method: 'DELETE', headers: authHeaders() });
   if (res.ok) pbLoadUsers();
   else { const d = await res.json(); alert(d.error); }
+}
+
+/*  ======  API KEYS  ======  */
+
+function _escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function pbLoadApiKeys() {
+  const container = document.getElementById('pbApiKeyList');
+  container.innerHTML = '<div class="text-muted small py-3">Chargement…</div>';
+  const res  = await fetch(`${SERVER_URL}/api/admin/api-keys`, { headers: authHeaders() });
+  const data = await res.json();
+  const keys = data.api_keys || [];
+
+  if (!keys.length) {
+    container.innerHTML = '<div class="text-muted small py-3">Aucune clé API. Créez-en une pour connecter un Skill.</div>';
+    return;
+  }
+
+  const rows = keys.map(k => {
+    const created  = new Date(k.created_at * 1000).toLocaleDateString('fr-FR');
+    const lastUsed = k.last_used_at
+      ? new Date(k.last_used_at * 1000).toLocaleDateString('fr-FR')
+      : '<span class="text-muted">Jamais</span>';
+    return `<tr>
+      <td class="fw-semibold">${_escHtml(k.name)}</td>
+      <td class="font-monospace text-muted small">${_escHtml(k.id.slice(0, 8))}…</td>
+      <td>${created}</td>
+      <td>${lastUsed}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-danger"
+                data-id="${_escHtml(k.id)}" data-name="${_escHtml(k.name)}"
+                onclick="pbRevokeApiKey(this.dataset.id, this.dataset.name)">
+          <i class="bi bi-trash"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="table table-sm table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Nom</th><th>ID</th><th>Créée le</th><th>Dernière utilisation</th><th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function pbOpenNewApiKeyModal() {
+  document.getElementById('pbApiKeyName').value = '';
+  document.getElementById('pbApiKeyError').style.display = 'none';
+  new bootstrap.Modal(document.getElementById('pbApiKeyModal')).show();
+}
+
+async function pbCreateApiKey() {
+  const name = document.getElementById('pbApiKeyName').value.trim();
+  const errEl = document.getElementById('pbApiKeyError');
+  if (!name) { errEl.textContent = 'Nom requis.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  const res  = await fetch(`${SERVER_URL}/api/admin/api-keys`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  const data = await res.json();
+  if (!res.ok) { errEl.textContent = data.error || 'Erreur.'; errEl.style.display = 'block'; return; }
+
+  bootstrap.Modal.getInstance(document.getElementById('pbApiKeyModal')).hide();
+
+  const revealModal = document.getElementById('pbApiKeyRevealModal');
+  document.getElementById('pbApiKeyRevealValue').value  = data.api_key.key;
+  document.getElementById('pbApiKeyRevealUrl').value    = SERVER_URL;
+  document.getElementById('pbApiKeyCopyIcon').className = 'bi bi-clipboard';
+  document.getElementById('pbApiUrlCopyIcon').className = 'bi bi-clipboard';
+
+  // Clear the key from DOM as soon as the modal is dismissed
+  revealModal.addEventListener('hidden.bs.modal', () => {
+    document.getElementById('pbApiKeyRevealValue').value = '';
+  }, { once: true });
+
+  new bootstrap.Modal(revealModal).show();
+}
+
+function pbCopyApiKey() {
+  navigator.clipboard.writeText(document.getElementById('pbApiKeyRevealValue').value);
+  document.getElementById('pbApiKeyCopyIcon').className = 'bi bi-check2 text-success';
+}
+
+function pbCopyApiUrl() {
+  navigator.clipboard.writeText(document.getElementById('pbApiKeyRevealUrl').value);
+  document.getElementById('pbApiUrlCopyIcon').className = 'bi bi-check2 text-success';
+}
+
+async function pbRevokeApiKey(id, name) {
+  if (!confirm(`Révoquer la clé "${name}" ?\n\nTout service qui l'utilise sera immédiatement bloqué.`)) return;
+  const res = await fetch(`${SERVER_URL}/api/admin/api-keys/${id}`, { method: 'DELETE', headers: authHeaders() });
+  if (res.ok) pbLoadApiKeys();
+  else { const d = await res.json(); alert(d.error || 'Erreur'); }
 }
 
 /*  ======  FILE BROWSER  ======  */

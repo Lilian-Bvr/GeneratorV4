@@ -194,6 +194,21 @@ try {
     getDB()->exec("ALTER TABLE projects ADD COLUMN env ENUM('production','staging') NOT NULL DEFAULT 'production'");
 } catch (PDOException $e) { /* Already exists — ignore */ }
 
+// Auto-migration: api_keys table for Skill/service authentication
+try {
+    getDB()->exec("
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id           CHAR(36)     PRIMARY KEY,
+            name         VARCHAR(255) NOT NULL,
+            key_hash     CHAR(64)     NOT NULL UNIQUE,
+            owner_id     INT UNSIGNED NOT NULL,
+            created_at   INT UNSIGNED NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+            last_used_at INT UNSIGNED DEFAULT NULL,
+            FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+} catch (PDOException $e) { /* Ignore */ }
+
 // Detect current environment based on install path
 define('APP_ENV', strpos(__DIR__, 'experimental') !== false ? 'staging' : 'production');
 
@@ -1076,6 +1091,40 @@ if (preg_match('#^/api/admin/users/(\d+)$#', $path, $m) && $method === 'DELETE')
     jsonResponse(['success' => true]);
 }
 
+// ======== ADMIN — API KEYS ========
+
+// List API keys
+if ($path === '/api/admin/api-keys' && $method === 'GET') {
+    requireAdmin();
+    $rows = getDB()->query('SELECT id, name, owner_id, created_at, last_used_at FROM api_keys ORDER BY created_at DESC')->fetchAll();
+    jsonResponse(['api_keys' => $rows]);
+}
+
+// Create API key — returns the raw key once, never stored in clear
+if ($path === '/api/admin/api-keys' && $method === 'POST') {
+    $admin = requireAdmin();
+    $input = json_decode(file_get_contents('php://input'), true);
+    $name  = trim($input['name'] ?? '');
+    if (!$name) jsonResponse(['error' => 'Nom requis'], 400);
+    if (mb_strlen($name) > 255) jsonResponse(['error' => 'Nom trop long (max 255 caractères)'], 400);
+
+    $rawKey  = bin2hex(random_bytes(32));
+    $keyHash = hash('sha256', $rawKey);
+    $id      = generateUUID();
+
+    getDB()->prepare('INSERT INTO api_keys (id, name, key_hash, owner_id, created_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$id, $name, $keyHash, $admin['id'], time()]);
+
+    jsonResponse(['api_key' => ['id' => $id, 'name' => $name, 'key' => $rawKey]], 201);
+}
+
+// Revoke API key (owner check: an admin can only delete their own keys)
+if (preg_match('#^/api/admin/api-keys/([a-f0-9\-]+)$#', $path, $m) && $method === 'DELETE') {
+    $admin = requireAdmin();
+    getDB()->prepare('DELETE FROM api_keys WHERE id = ? AND owner_id = ?')->execute([$m[1], $admin['id']]);
+    jsonResponse(['success' => true]);
+}
+
 // ======== PROJECTS ========
 
 // List projects (admin: all; user: assigned only)
@@ -1128,6 +1177,39 @@ if ($path === '/api/projects' && $method === 'POST') {
     if (!is_dir($dir)) mkdir($dir, 0755, true);
 
     jsonResponse(['project' => ['id' => $id, 'name' => $name, 'description' => $desc]], 201);
+}
+
+// Import project from external JSON (used by production Skills)
+if ($path === '/api/projects/from-json' && $method === 'POST') {
+    $user  = requireAdmin(); // admin session or admin-owned API key
+    if (isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > 5 * 1024 * 1024)
+        jsonResponse(['error' => 'Payload trop grand (max 5 Mo)'], 413);
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $title = trim($input['title'] ?? '');
+    $type  = $input['type']  ?? 'court';
+    $json  = $input['json']  ?? null;
+
+    if (!$title) jsonResponse(['error' => 'title requis'], 400);
+    if (mb_strlen($title) > 255) jsonResponse(['error' => 'title trop long (max 255 caractères)'], 400);
+    if (!$json || !is_array($json)) jsonResponse(['error' => 'json requis (objet)'], 400);
+    if (!in_array($type, ['sequence', 'court', 'flashcards'], true))
+        jsonResponse(['error' => 'type invalide'], 400);
+
+    $pdo       = getDB();
+    $projectId = generateUUID();
+    $pdo->prepare('INSERT INTO projects (id, name, description, created_by, env) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$projectId, $title, '', $user['id'], APP_ENV]);
+
+    $dir = projectDir($projectId);
+    if (!is_dir($dir)) mkdir($dir, 0755, true);
+
+    file_put_contents(
+        $dir . '/pending_import.json',
+        json_encode(['type' => $type, 'json' => $json], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+    );
+
+    jsonResponse(['project_id' => $projectId], 201);
 }
 
 // Get single project

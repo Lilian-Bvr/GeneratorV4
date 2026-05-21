@@ -93,6 +93,11 @@
             <i class="bi bi-archive me-1"></i> Modèles
           </a>
         </li>
+        <li class="nav-item" id="pbApiKeysTab" style="display:none;">
+          <a class="nav-link" href="#" onclick="pbShowTab('apikeys');return false;">
+            <i class="bi bi-key me-1"></i> API Keys
+          </a>
+        </li>
       </ul>
 
       <!-- PROJECTS TAB -->
@@ -192,6 +197,217 @@
           </button>
         </div>
         <div id="pbUserList"></div>
+      </div>
+
+      <!-- API KEYS TAB (admin only) -->
+      <div id="pbTabApiKeys" style="display:none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h5 class="mb-0">Clés API</h5>
+            <p class="text-muted small mb-0">Utilisées par les Skills Claude pour s'authentifier (ex. Skill Production Moodle).</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="pbOpenNewApiKeyModal()">
+            <i class="bi bi-plus-circle me-1"></i> Nouvelle clé
+          </button>
+        </div>
+        <div id="pbApiKeyList" class="mb-4"></div>
+
+        <!-- API Reference -->
+        <div class="border rounded p-3 bg-light">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0"><i class="bi bi-book me-2"></i>Référence API — Skill de production</h6>
+            <button class="btn btn-sm btn-outline-secondary" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#pbApiRef" aria-expanded="false">
+              Afficher / Masquer
+            </button>
+          </div>
+
+          <div class="collapse" id="pbApiRef">
+
+            <!-- Endpoint -->
+            <div class="mb-3">
+              <div class="fw-semibold small text-muted mb-1">ENDPOINT</div>
+              <code class="d-block bg-white border rounded px-3 py-2 small">POST {SEQUENCEUR_URL}/api/projects/from-json</code>
+            </div>
+
+            <!-- Headers -->
+            <div class="mb-3">
+              <div class="fw-semibold small text-muted mb-1">HEADERS</div>
+              <pre class="bg-white border rounded px-3 py-2 small mb-0" style="white-space:pre-wrap;">Authorization: Bearer {API_KEY}
+Content-Type: application/json</pre>
+            </div>
+
+            <!-- Body root -->
+            <div class="mb-3">
+              <div class="fw-semibold small text-muted mb-1">BODY — STRUCTURE RACINE</div>
+              <pre class="bg-white border rounded px-3 py-2 small mb-0" style="white-space:pre-wrap;">{
+  "title": "Nom du cours",           // requis — nom du projet créé
+  "type":  "court",                  // "court" | "sequence" | "flashcards"
+  "json": {
+    "Duration": 10,                  // durée en minutes (optionnel)
+    "EX1": { ... },
+    "EX2": { ... },
+    "Recap": { "Type": "Minimaliste" }
+  }
+}</pre>
+            </div>
+
+            <!-- Champs communs -->
+            <div class="mb-3">
+              <div class="fw-semibold small text-muted mb-1">CHAMPS COMMUNS À TOUS LES EXERCICES</div>
+              <pre class="bg-white border rounded px-3 py-2 small mb-0" style="white-space:pre-wrap;">{
+  "Type":       "...",               // voir types ci-dessous
+  "Consigne":   "Réponds à la question.",
+  "Tentatives": 1,
+  "Image":      null,                // ou chemin — laisser null si absent
+  "Video":      null,
+  "Audio_Enonce": {
+    "Fichier":       "",             // laisser vide — généré après import
+    "Transcription": "Texte lu à voix haute."
+  },
+  "Feedback": {
+    "Type":      "Simple",
+    "Texte_HTML": "<p>Explication...</p>"
+  }
+}</pre>
+            </div>
+
+            <!-- Types d'exercices -->
+            <div class="fw-semibold small text-muted mb-2">TYPES D'EXERCICES</div>
+            <div class="accordion" id="pbApiExTypes">
+
+              <div class="accordion-item">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                          data-bs-toggle="collapse" data-bs-target="#exQCU">QCU</button>
+                </h2>
+                <div id="exQCU" class="accordion-collapse collapse" data-bs-parent="#pbApiExTypes">
+                  <div class="accordion-body p-0">
+                    <pre class="bg-white px-3 py-2 small mb-0" style="white-space:pre-wrap;">{
+  "Type": "QCU",
+  "Question": "Quelle est la réserve principale de Victor ?",
+  "Reponses": { "A": "...", "B": "...", "C": "...", "D": "..." },
+  "BonneReponse": "A"
+}</pre>
+                  </div>
+                </div>
+              </div>
+
+              <div class="accordion-item">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                          data-bs-toggle="collapse" data-bs-target="#exQCM">QCM</button>
+                </h2>
+                <div id="exQCM" class="accordion-collapse collapse" data-bs-parent="#pbApiExTypes">
+                  <div class="accordion-body p-0">
+                    <pre class="bg-white px-3 py-2 small mb-0" style="white-space:pre-wrap;">{
+  "Type": "QCM",
+  "Question": "Quels marqueurs expriment une concession ?",
+  "Reponses": { "A": "...", "B": "...", "C": "...", "D": "..." },
+  "Corrections": ["A", "C"]
+}</pre>
+                  </div>
+                </div>
+              </div>
+
+              <div class="accordion-item">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                          data-bs-toggle="collapse" data-bs-target="#exTF">True or false</button>
+                </h2>
+                <div id="exTF" class="accordion-collapse collapse" data-bs-parent="#pbApiExTypes">
+                  <div class="accordion-body p-0">
+                    <pre class="bg-white px-3 py-2 small mb-0" style="white-space:pre-wrap;">{
+  "Type": "True or false",
+  "Affirmation": "Victor rejette la conclusion de Sophie.",
+  "BonneReponse": "False"
+}</pre>
+                  </div>
+                </div>
+              </div>
+
+              <div class="accordion-item">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                          data-bs-toggle="collapse" data-bs-target="#exComplete">Complete</button>
+                </h2>
+                <div id="exComplete" class="accordion-collapse collapse" data-bs-parent="#pbApiExTypes">
+                  <div class="accordion-body p-0">
+                    <pre class="bg-white px-3 py-2 small mb-0" style="white-space:pre-wrap;">// Complete_Type: "options" — trous avec choix
+{
+  "Type": "Complete",
+  "Complete_Type": "options",
+  "Texte_Complet":   "Votre analyse est pertinente, #néanmoins# il faut revoir les chiffres.",
+  "Texte_Incomplet": "Votre analyse est pertinente, _____ il faut revoir les chiffres.",
+  "Options": ["néanmoins", "pourtant", "cependant", "en revanche"]
+}
+
+// Complete_Type: "reconstruit" — remise en ordre
+{
+  "Type": "Complete",
+  "Complete_Type": "reconstruit",
+  "Texte_Complet":   "#Même si# #les recommandations# #vont dans le bon sens,# #j'aurais aimé voir# #les hypothèses# #détaillées.#",
+  "Texte_Incomplet": "_______ _______ _______ _______ _______ _______.",
+  "Options": ["Même si", "les recommandations", "vont dans le bon sens,", "j'aurais aimé voir", "les hypothèses", "détaillées."]
+}</pre>
+                  </div>
+                </div>
+              </div>
+
+              <div class="accordion-item">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                          data-bs-toggle="collapse" data-bs-target="#exMatching">Matching</button>
+                </h2>
+                <div id="exMatching" class="accordion-collapse collapse" data-bs-parent="#pbApiExTypes">
+                  <div class="accordion-body p-0">
+                    <pre class="bg-white px-3 py-2 small mb-0" style="white-space:pre-wrap;">// Match_Type: "texte-texte"
+{
+  "Type": "Matching",
+  "Match_Type": "texte-texte",
+  "Tentatives": 9999,
+  "Paires": {
+    "P1": { "Match_L1": "toutefois",              "Match_R1": "Réserve formelle après reconnaissance" },
+    "P2": { "Match_L2": "bien que (+ subjonctif)", "Match_R2": "Proposition concessive avec mise à distance" },
+    "P3": { "Match_L3": "cependant",              "Match_R3": "Réserve registre standard" },
+    "P4": { "Match_L4": "néanmoins",              "Match_R4": "Adverbe le plus formel" }
+  }
+}
+
+// Match_Type: "audio-texte"  →  Match_L = audio (Transcription_L1…), Match_R = texte
+// Match_Type: "audio-audio"  →  les deux côtés sont des audios (Transcription_L1…, Transcription_R1…)</pre>
+                  </div>
+                </div>
+              </div>
+
+              <div class="accordion-item">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                          data-bs-toggle="collapse" data-bs-target="#exRecap">Recap</button>
+                </h2>
+                <div id="exRecap" class="accordion-collapse collapse" data-bs-parent="#pbApiExTypes">
+                  <div class="accordion-body p-0">
+                    <pre class="bg-white px-3 py-2 small mb-0" style="white-space:pre-wrap;">// Placé à la racine du json (pas dans EX1…), toujours en dernier
+"Recap": { "Type": "Minimaliste" }
+
+// ou
+"Recap": {
+  "Type": "Liste",
+  "Expressions": [
+    { "Texte": "néanmoins", "Audio": "" },
+    { "Texte": "cependant", "Audio": "" }
+  ]
+}
+
+// ou
+"Recap": { "Type": "Texte", "Texte": "Dans cette séquence, vous avez étudié…" }</pre>
+                  </div>
+                </div>
+              </div>
+
+            </div><!-- /accordion -->
+          </div><!-- /collapse -->
+        </div><!-- /border rounded -->
       </div>
 
     </div>
@@ -330,6 +546,64 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
           <button type="button" class="btn btn-primary" id="pbUserSaveBtn" onclick="pbSaveUser()">Créer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: New API Key ===== -->
+  <div class="modal fade" id="pbApiKeyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Nouvelle clé API</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold">Nom <span class="text-danger">*</span></label>
+            <input type="text" id="pbApiKeyName" class="form-control" placeholder="Ex: Skill Production Moodle Banque">
+            <div class="form-text">Identifiant lisible pour retrouver à quoi sert cette clé.</div>
+          </div>
+          <div id="pbApiKeyError" class="text-danger small" style="display:none;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="button" class="btn btn-primary" onclick="pbCreateApiKey()">Générer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Show generated API Key (once) ===== -->
+  <div class="modal fade" id="pbApiKeyRevealModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-shield-lock me-2 text-success"></i>Clé générée</h5>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning py-2 small mb-3">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Copiez cette clé maintenant — elle ne sera plus affichée.
+          </div>
+          <label class="form-label fw-bold small text-muted">CLÉ API</label>
+          <div class="input-group mb-3">
+            <input type="text" id="pbApiKeyRevealValue" class="form-control font-monospace" readonly>
+            <button class="btn btn-outline-secondary" onclick="pbCopyApiKey()" title="Copier">
+              <i class="bi bi-clipboard" id="pbApiKeyCopyIcon"></i>
+            </button>
+          </div>
+          <label class="form-label fw-bold small text-muted">URL DU SÉQUENCEUR</label>
+          <div class="input-group">
+            <input type="text" id="pbApiKeyRevealUrl" class="form-control font-monospace" readonly>
+            <button class="btn btn-outline-secondary" onclick="pbCopyApiUrl()" title="Copier">
+              <i class="bi bi-clipboard" id="pbApiUrlCopyIcon"></i>
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="pbLoadApiKeys()">J'ai copié la clé</button>
         </div>
       </div>
     </div>

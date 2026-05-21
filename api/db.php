@@ -16,11 +16,14 @@ function getDB(): PDO {
     return $pdo;
 }
 
-// Returns the authenticated user array or sends 401
+// Returns the authenticated user array or sends 401.
+// Accepts both session tokens and API keys (Bearer header).
 function requireAuth(): array {
     $token = extractToken();
     if (!$token) jsonResponse(['error' => 'Non authentifié'], 401);
-    $pdo  = getDB();
+    $pdo = getDB();
+
+    // 1. Check session table
     $stmt = $pdo->prepare('
         SELECT u.id, u.name, u.email, u.role
         FROM sessions s
@@ -29,8 +32,26 @@ function requireAuth(): array {
     ');
     $stmt->execute([$token, time()]);
     $user = $stmt->fetch();
-    if (!$user) jsonResponse(['error' => 'Session expirée ou invalide'], 401);
-    return $user;
+    if ($user) return $user;
+
+    // 2. Check API keys (token is the raw key, stored as SHA-256 hash)
+    $keyHash = hash('sha256', $token);
+    $stmt = $pdo->prepare('
+        SELECT u.id, u.name, u.email, u.role, ak.id AS api_key_id
+        FROM api_keys ak
+        JOIN users u ON u.id = ak.owner_id
+        WHERE ak.key_hash = ?
+    ');
+    $stmt->execute([$keyHash]);
+    $row = $stmt->fetch();
+    if ($row) {
+        $pdo->prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?')
+            ->execute([time(), $row['api_key_id']]);
+        unset($row['api_key_id']);
+        return $row;
+    }
+
+    jsonResponse(['error' => 'Session expirée ou invalide'], 401);
 }
 
 function requireAdmin(): array {
