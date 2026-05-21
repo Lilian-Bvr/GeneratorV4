@@ -216,6 +216,11 @@ try {
     getDB()->exec("ALTER TABLE api_keys ADD COLUMN project_id CHAR(36) DEFAULT NULL");
 } catch (PDOException $e) { /* Already exists — ignore */ }
 
+// Auto-migration: status column on files for pending Skill imports
+try {
+    getDB()->exec("ALTER TABLE files ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'ready'");
+} catch (PDOException $e) { /* Already exists — ignore */ }
+
 // Detect current environment based on install path
 define('APP_ENV', strpos(__DIR__, 'experimental') !== false ? 'staging' : 'production');
 
@@ -1243,12 +1248,18 @@ if ($path === '/api/projects/from-json' && $method === 'POST') {
         if (!is_dir($dir)) mkdir($dir, 0755, true);
     }
 
+    $fileId = generateUUID();
+    $now    = time();
+    $pdo->prepare('INSERT INTO files (id, project_id, name, type, level, author_id, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$fileId, $projectId, $name, $type, 0, $user['id'], $now, $now, 'pending_import']);
+    $pdo->prepare('UPDATE projects SET updated_at = ? WHERE id = ?')->execute([$now, $projectId]);
+
     file_put_contents(
-        projectDir($projectId) . '/pending_import.json',
+        projectDir($projectId) . '/' . $fileId . '.pending.json',
         json_encode(['name' => $name, 'type' => $type, 'json' => $json], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
     );
 
-    jsonResponse(['project_id' => $projectId], 201);
+    jsonResponse(['project_id' => $projectId, 'file_id' => $fileId], 201);
 }
 
 // Get single project
@@ -1439,9 +1450,12 @@ if (preg_match('#^/api/projects/([a-f0-9\-]+)/files$#', $path, $m) && $method ==
 
         // Author updating their own file
         move_uploaded_file($_FILES['zip']['tmp_name'], fileZipPath($projectId, $fileId));
-        $pdo->prepare('UPDATE files SET name = ?, type = ?, level = ?, updated_at = ?, modele_saved_at = ? WHERE id = ?')
+        $pdo->prepare("UPDATE files SET name = ?, type = ?, level = ?, updated_at = ?, modele_saved_at = ?, status = 'ready' WHERE id = ?")
             ->execute([$name, $type, $level, $now, $modeleSavedAt, $fileId]);
         $pdo->prepare('UPDATE projects SET updated_at = ? WHERE id = ?')->execute([$now, $projectId]);
+        // Clean up pending JSON if it existed
+        $pendingJson = projectDir($projectId) . '/' . $fileId . '.pending.json';
+        if (file_exists($pendingJson)) unlink($pendingJson);
         jsonResponse(['file_id' => $fileId, 'forked' => false]);
 
     } else {
@@ -1481,6 +1495,29 @@ if (preg_match('#^/api/projects/([a-f0-9\-]+)/files/([a-f0-9\-]+)/download$#', $
     header('Content-Length: ' . filesize($zipPath));
     readfile($zipPath);
     exit;
+}
+
+// Get pending JSON for a file awaiting Skill import
+if (preg_match('#^/api/projects/([a-f0-9\-]+)/files/([a-f0-9\-]+)/pending-json$#', $path, $m) && $method === 'GET') {
+    $user      = requireAuth();
+    $projectId = $m[1];
+    $fileId    = $m[2];
+    $pdo       = getDB();
+
+    if ($user['role'] !== 'admin') {
+        $a = $pdo->prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?');
+        $a->execute([$projectId, $user['id']]);
+        if (!$a->fetch()) jsonResponse(['error' => 'Accès refusé'], 403);
+    }
+
+    $stmt = $pdo->prepare("SELECT * FROM files WHERE id = ? AND project_id = ? AND status = 'pending_import'");
+    $stmt->execute([$fileId, $projectId]);
+    if (!$stmt->fetch()) jsonResponse(['error' => 'Fichier introuvable ou déjà importé'], 404);
+
+    $jsonPath = projectDir($projectId) . '/' . $fileId . '.pending.json';
+    if (!file_exists($jsonPath)) jsonResponse(['error' => 'Données JSON manquantes sur le serveur'], 404);
+
+    jsonResponse(json_decode(file_get_contents($jsonPath), true));
 }
 
 // Delete a file

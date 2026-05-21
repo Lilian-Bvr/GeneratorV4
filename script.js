@@ -807,10 +807,12 @@ function fbRenderFiles() {
           const mDate      = f.modele_saved_at
             ? new Date(f.modele_saved_at * 1000).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' })
             : null;
+          const isPending = f.status === 'pending_import';
           return `
           <tr>
             <td>
               <strong>${_esc(f.name)}</strong>
+              ${isPending ? '<br><span class="badge bg-warning text-dark mt-1"><i class="bi bi-hourglass-split me-1"></i>En attente d\'import</span>' : ''}
               ${f.parent_id ? `<br><small class="text-muted">Copie de <em>${_esc(f.parent_name || '?')}</em></small>` : ''}
               ${mDate ? `<br><small style="color:${isOutdated ? '#fd7e14' : '#6c757d'}">${isOutdated ? '<i class="bi bi-exclamation-triangle-fill me-1"></i>' : ''}Modèle du ${mDate}${isOutdated ? ' — mis à jour' : ''}</small>` : ''}
             </td>
@@ -819,8 +821,8 @@ function fbRenderFiles() {
             <td>${_esc(f.author_name)}</td>
             <td class="text-muted small">${_relativeTime(f.updated_at)}</td>
             <td class="text-end">
-              <button class="btn btn-sm btn-primary me-1" onclick="fbOpenFile(${JSON.stringify(f).replace(/"/g,'&quot;')})">
-                <i class="bi bi-pencil-square me-1"></i> Ouvrir
+              <button class="btn btn-sm ${isPending ? 'btn-warning' : 'btn-primary'} me-1" onclick="fbOpenFile(${JSON.stringify(f).replace(/"/g,'&quot;')})">
+                <i class="bi bi-${isPending ? 'download me-1' : 'pencil-square me-1'}"></i> ${isPending ? 'Importer' : 'Ouvrir'}
               </button>
               <button class="btn btn-sm btn-outline-secondary me-1" onclick="fbDuplicateFile('${f.id}', ${JSON.stringify(f.name).replace(/"/g,'&quot;')})">
                 <i class="bi bi-copy"></i>
@@ -873,11 +875,23 @@ function fbCreateNewFile() {
 }
 
 async function fbOpenFile(file) {
-  // Download the ZIP, then import it into the editor
   _currentFileId   = file.id;
   _currentFileMeta = { name: file.name, type: file.type, level: file.level };
 
   try {
+    if (file.status === 'pending_import') {
+      // Skill-deposited JSON — fetch and import directly, no ZIP exists yet
+      const res = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files/${file.id}/pending-json`, {
+        headers: authHeaders()
+      });
+      if (!res.ok) throw new Error('Impossible de récupérer les données JSON');
+      const data = await res.json();
+      selectMode('sequenceur_court');
+      setTimeout(() => _doImportJsonCourt(data.json), 300);
+      return;
+    }
+
+    // Normal file — download ZIP and import
     const res = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files/${file.id}/download`, {
       headers: authHeaders()
     });
@@ -5940,6 +5954,10 @@ async function importJsonCourt(event) {
     return;
   }
 
+  await _doImportJsonCourt(data);
+}
+
+async function _doImportJsonCourt(data) {
   showImportOverlay();
   try {
     clearSequenceur();
