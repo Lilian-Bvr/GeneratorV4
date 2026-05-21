@@ -5890,6 +5890,11 @@ async function importJsonCourt(event) {
       }
 
       if (exoData.Audio_Enonce?.Transcription) {
+        const audioSwitch = document.getElementById(`audioSwitch_${id}`);
+        if (audioSwitch && !audioSwitch.checked) {
+          audioSwitch.checked = true;
+          toggleAudioField(id);
+        }
         safeSet(`audioTranscription_${id}`, exoData.Audio_Enonce.Transcription);
       }
 
