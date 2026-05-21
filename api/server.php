@@ -1207,18 +1207,21 @@ if ($path === '/api/projects/from-json' && $method === 'POST') {
     if (isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > 5 * 1024 * 1024)
         jsonResponse(['error' => 'Payload trop grand (max 5 Mo)'], 413);
 
-    $input = json_decode(file_get_contents('php://input'), true);
-    $title = trim($input['title'] ?? '');
-    $type  = $input['type'] ?? 'court';
-    $json  = $input['json'] ?? null;
+    $input        = json_decode(file_get_contents('php://input'), true);
+    $name         = trim($input['name']         ?? '');  // nom du fichier/objet déposé
+    $projectName  = trim($input['project_name'] ?? '');  // nom du projet à créer si aucun lié
+    $type         = $input['type'] ?? 'court';
+    $json         = $input['json'] ?? null;
 
+    if (!$name) jsonResponse(['error' => 'name requis (nom du fichier déposé)'], 400);
+    if (mb_strlen($name) > 255) jsonResponse(['error' => 'name trop long (max 255 caractères)'], 400);
     if (!$json || !is_array($json)) jsonResponse(['error' => 'json requis (objet)'], 400);
     if (!in_array($type, ['sequence', 'court', 'flashcards'], true))
         jsonResponse(['error' => 'type invalide'], 400);
 
     $pdo = getDB();
 
-    // Resolve project: use the one bound to the API key, or create a new one from title
+    // Resolve project: use the one bound to the API key, or create a new one from project_name
     $token     = extractToken();
     $keyHash   = hash('sha256', $token);
     $keyStmt   = $pdo->prepare('SELECT project_id FROM api_keys WHERE key_hash = ?');
@@ -1227,24 +1230,22 @@ if ($path === '/api/projects/from-json' && $method === 'POST') {
     $projectId = $keyRow ? $keyRow['project_id'] : null;
 
     if ($projectId) {
-        // Verify the project still exists
         $check = $pdo->prepare('SELECT id FROM projects WHERE id = ?');
         $check->execute([$projectId]);
         if (!$check->fetch()) jsonResponse(['error' => 'Projet associé à la clé introuvable'], 404);
     } else {
-        // No project bound to this key — create one from title
-        if (!$title) jsonResponse(['error' => 'title requis (aucun projet associé à cette clé)'], 400);
-        if (mb_strlen($title) > 255) jsonResponse(['error' => 'title trop long (max 255 caractères)'], 400);
+        if (!$projectName) jsonResponse(['error' => 'project_name requis (aucun projet associé à cette clé)'], 400);
+        if (mb_strlen($projectName) > 255) jsonResponse(['error' => 'project_name trop long (max 255 caractères)'], 400);
         $projectId = generateUUID();
         $pdo->prepare('INSERT INTO projects (id, name, description, created_by, env) VALUES (?, ?, ?, ?, ?)')
-            ->execute([$projectId, $title, '', $user['id'], APP_ENV]);
+            ->execute([$projectId, $projectName, '', $user['id'], APP_ENV]);
         $dir = projectDir($projectId);
         if (!is_dir($dir)) mkdir($dir, 0755, true);
     }
 
     file_put_contents(
         projectDir($projectId) . '/pending_import.json',
-        json_encode(['type' => $type, 'json' => $json], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        json_encode(['name' => $name, 'type' => $type, 'json' => $json], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
     );
 
     jsonResponse(['project_id' => $projectId], 201);

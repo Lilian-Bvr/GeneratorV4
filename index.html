@@ -224,6 +224,41 @@
 
           <div class="collapse" id="pbApiRef">
 
+            <!-- Skill config card -->
+            <div class="card border-primary mb-4">
+              <div class="card-header bg-primary text-white py-2 small fw-semibold">
+                <i class="bi bi-gear me-1"></i> Variables à fournir au Skill
+              </div>
+              <div class="card-body py-3">
+                <div class="mb-3">
+                  <div class="fw-semibold small text-muted mb-1">SEQUENCEUR_URL</div>
+                  <div class="input-group input-group-sm">
+                    <input type="text" id="pbApiRefUrl" class="form-control font-monospace" readonly>
+                    <button class="btn btn-outline-secondary" onclick="pbCopyRef('pbApiRefUrl', this)">
+                      <i class="bi bi-clipboard"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <div class="fw-semibold small text-muted mb-1">SEQUENCEUR_API_KEY</div>
+                  <div class="input-group input-group-sm">
+                    <input type="text" class="form-control font-monospace text-muted"
+                           value="Copiée à la création de la clé (non récupérable)" readonly>
+                  </div>
+                </div>
+                <div>
+                  <div class="fw-semibold small text-muted mb-1">EXEMPLE D'APPEL COMPLET</div>
+                  <div class="position-relative">
+                    <pre id="pbApiRefExample" class="bg-white border rounded px-3 py-2 small mb-0" style="white-space:pre-wrap;"></pre>
+                    <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-1"
+                            onclick="pbCopyRef('pbApiRefExample', this)">
+                      <i class="bi bi-clipboard"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Endpoint -->
             <div class="mb-3">
               <div class="fw-semibold small text-muted mb-1">ENDPOINT</div>
@@ -233,7 +268,7 @@
             <!-- Headers -->
             <div class="mb-3">
               <div class="fw-semibold small text-muted mb-1">HEADERS</div>
-              <pre class="bg-white border rounded px-3 py-2 small mb-0" style="white-space:pre-wrap;">Authorization: Bearer {API_KEY}
+              <pre class="bg-white border rounded px-3 py-2 small mb-0" style="white-space:pre-wrap;">Authorization: Bearer {SEQUENCEUR_API_KEY}
 Content-Type: application/json</pre>
             </div>
 
@@ -241,9 +276,10 @@ Content-Type: application/json</pre>
             <div class="mb-3">
               <div class="fw-semibold small text-muted mb-1">BODY — STRUCTURE RACINE</div>
               <pre class="bg-white border rounded px-3 py-2 small mb-0" style="white-space:pre-wrap;">{
-  "title": "Nom du cours",           // optionnel si un projet est lié à la clé API
-                                     // requis si la clé n'a pas de projet associé
-  "type":  "court",                  // "court" | "sequence" | "flashcards"
+  "name":         "Concessions B2 — Séquence 1",  // requis — nom du fichier déposé
+  "type":         "court",                         // "court" | "sequence" | "flashcards"
+  "project_name": "Moodle Banque",                 // requis uniquement si la clé n'a pas
+                                                   // de projet associé (création à la volée)
   "json": {
     "Duration": 10,                  // durée en minutes (optionnel)
     "EX1": { ... },

@@ -241,7 +241,7 @@ function pbShowTab(tab) {
   if (tab === 'projects') pbLoadProjects();
   if (tab === 'users')    pbLoadUsers();
   if (tab === 'modeles')  pbLoadModeles();
-  if (tab === 'apikeys')  pbLoadApiKeys();
+  if (tab === 'apikeys')  { pbLoadApiKeys(); pbRenderApiReference(); }
 }
 
 async function pbLoadModeles() {
@@ -666,6 +666,39 @@ async function pbRevokeApiKey(id, name) {
   const res = await fetch(`${SERVER_URL}/api/admin/api-keys/${id}`, { method: 'DELETE', headers: authHeaders() });
   if (res.ok) pbLoadApiKeys();
   else { const d = await res.json(); alert(d.error || 'Erreur'); }
+}
+
+function pbRenderApiReference() {
+  const baseUrl = window.location.origin + SERVER_URL;
+  const urlInput = document.getElementById('pbApiRefUrl');
+  if (urlInput) urlInput.value = baseUrl;
+
+  const example = document.getElementById('pbApiRefExample');
+  if (example) {
+    example.textContent =
+`curl -X POST "${baseUrl}/api/projects/from-json" \\
+  -H "Authorization: Bearer $SEQUENCEUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "Nom de l\'objet SCORM",
+    "type": "sequences_courtes",
+    "json": { ... }
+  }'`;
+  }
+}
+
+function pbCopyRef(elementId, btn) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const text = el.value !== undefined ? el.value : el.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const icon = btn.querySelector('i');
+    if (icon) {
+      const prev = icon.className;
+      icon.className = 'bi bi-check2 text-success';
+      setTimeout(() => { icon.className = prev; }, 2000);
+    }
+  });
 }
 
 /*  ======  FILE BROWSER  ======  */
