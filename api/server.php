@@ -202,12 +202,19 @@ try {
             name         VARCHAR(255) NOT NULL,
             key_hash     CHAR(64)     NOT NULL UNIQUE,
             owner_id     INT UNSIGNED NOT NULL,
+            project_id   CHAR(36)     DEFAULT NULL,
             created_at   INT UNSIGNED NOT NULL DEFAULT (UNIX_TIMESTAMP()),
             last_used_at INT UNSIGNED DEFAULT NULL,
-            FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+            FOREIGN KEY (owner_id)   REFERENCES users(id)    ON DELETE CASCADE,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
 } catch (PDOException $e) { /* Ignore */ }
+
+// Auto-migration: project_id column on existing api_keys rows
+try {
+    getDB()->exec("ALTER TABLE api_keys ADD COLUMN project_id CHAR(36) DEFAULT NULL");
+} catch (PDOException $e) { /* Already exists — ignore */ }
 
 // Detect current environment based on install path
 define('APP_ENV', strpos(__DIR__, 'experimental') !== false ? 'staging' : 'production');
@@ -1096,24 +1103,39 @@ if (preg_match('#^/api/admin/users/(\d+)$#', $path, $m) && $method === 'DELETE')
 // List API keys
 if ($path === '/api/admin/api-keys' && $method === 'GET') {
     requireAdmin();
-    $rows = getDB()->query('SELECT id, name, owner_id, created_at, last_used_at FROM api_keys ORDER BY created_at DESC')->fetchAll();
+    $rows = getDB()->query('
+        SELECT ak.id, ak.name, ak.owner_id, ak.project_id, ak.created_at, ak.last_used_at,
+               p.name AS project_name
+        FROM api_keys ak
+        LEFT JOIN projects p ON p.id = ak.project_id
+        ORDER BY ak.created_at DESC
+    ')->fetchAll();
     jsonResponse(['api_keys' => $rows]);
 }
 
 // Create API key — returns the raw key once, never stored in clear
 if ($path === '/api/admin/api-keys' && $method === 'POST') {
-    $admin = requireAdmin();
-    $input = json_decode(file_get_contents('php://input'), true);
-    $name  = trim($input['name'] ?? '');
+    $admin     = requireAdmin();
+    $input     = json_decode(file_get_contents('php://input'), true);
+    $name      = trim($input['name'] ?? '');
+    $projectId = $input['project_id'] ?? null;
+
     if (!$name) jsonResponse(['error' => 'Nom requis'], 400);
     if (mb_strlen($name) > 255) jsonResponse(['error' => 'Nom trop long (max 255 caractères)'], 400);
+
+    // Validate project_id if provided
+    if ($projectId !== null) {
+        $stmt = getDB()->prepare('SELECT id FROM projects WHERE id = ?');
+        $stmt->execute([$projectId]);
+        if (!$stmt->fetch()) jsonResponse(['error' => 'Projet introuvable'], 404);
+    }
 
     $rawKey  = bin2hex(random_bytes(32));
     $keyHash = hash('sha256', $rawKey);
     $id      = generateUUID();
 
-    getDB()->prepare('INSERT INTO api_keys (id, name, key_hash, owner_id, created_at) VALUES (?, ?, ?, ?, ?)')
-        ->execute([$id, $name, $keyHash, $admin['id'], time()]);
+    getDB()->prepare('INSERT INTO api_keys (id, name, key_hash, owner_id, project_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        ->execute([$id, $name, $keyHash, $admin['id'], $projectId, time()]);
 
     jsonResponse(['api_key' => ['id' => $id, 'name' => $name, 'key' => $rawKey]], 201);
 }
@@ -1181,31 +1203,47 @@ if ($path === '/api/projects' && $method === 'POST') {
 
 // Import project from external JSON (used by production Skills)
 if ($path === '/api/projects/from-json' && $method === 'POST') {
-    $user  = requireAdmin(); // admin session or admin-owned API key
+    $user = requireAdmin(); // admin session or admin-owned API key
     if (isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > 5 * 1024 * 1024)
         jsonResponse(['error' => 'Payload trop grand (max 5 Mo)'], 413);
 
     $input = json_decode(file_get_contents('php://input'), true);
     $title = trim($input['title'] ?? '');
-    $type  = $input['type']  ?? 'court';
-    $json  = $input['json']  ?? null;
+    $type  = $input['type'] ?? 'court';
+    $json  = $input['json'] ?? null;
 
-    if (!$title) jsonResponse(['error' => 'title requis'], 400);
-    if (mb_strlen($title) > 255) jsonResponse(['error' => 'title trop long (max 255 caractères)'], 400);
     if (!$json || !is_array($json)) jsonResponse(['error' => 'json requis (objet)'], 400);
     if (!in_array($type, ['sequence', 'court', 'flashcards'], true))
         jsonResponse(['error' => 'type invalide'], 400);
 
-    $pdo       = getDB();
-    $projectId = generateUUID();
-    $pdo->prepare('INSERT INTO projects (id, name, description, created_by, env) VALUES (?, ?, ?, ?, ?)')
-        ->execute([$projectId, $title, '', $user['id'], APP_ENV]);
+    $pdo = getDB();
 
-    $dir = projectDir($projectId);
-    if (!is_dir($dir)) mkdir($dir, 0755, true);
+    // Resolve project: use the one bound to the API key, or create a new one from title
+    $token     = extractToken();
+    $keyHash   = hash('sha256', $token);
+    $keyStmt   = $pdo->prepare('SELECT project_id FROM api_keys WHERE key_hash = ?');
+    $keyStmt->execute([$keyHash]);
+    $keyRow    = $keyStmt->fetch();
+    $projectId = $keyRow ? $keyRow['project_id'] : null;
+
+    if ($projectId) {
+        // Verify the project still exists
+        $check = $pdo->prepare('SELECT id FROM projects WHERE id = ?');
+        $check->execute([$projectId]);
+        if (!$check->fetch()) jsonResponse(['error' => 'Projet associé à la clé introuvable'], 404);
+    } else {
+        // No project bound to this key — create one from title
+        if (!$title) jsonResponse(['error' => 'title requis (aucun projet associé à cette clé)'], 400);
+        if (mb_strlen($title) > 255) jsonResponse(['error' => 'title trop long (max 255 caractères)'], 400);
+        $projectId = generateUUID();
+        $pdo->prepare('INSERT INTO projects (id, name, description, created_by, env) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$projectId, $title, '', $user['id'], APP_ENV]);
+        $dir = projectDir($projectId);
+        if (!is_dir($dir)) mkdir($dir, 0755, true);
+    }
 
     file_put_contents(
-        $dir . '/pending_import.json',
+        projectDir($projectId) . '/pending_import.json',
         json_encode(['type' => $type, 'json' => $json], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
     );
 

@@ -241,7 +241,8 @@ Content-Type: application/json</pre>
             <div class="mb-3">
               <div class="fw-semibold small text-muted mb-1">BODY — STRUCTURE RACINE</div>
               <pre class="bg-white border rounded px-3 py-2 small mb-0" style="white-space:pre-wrap;">{
-  "title": "Nom du cours",           // requis — nom du projet créé
+  "title": "Nom du cours",           // optionnel si un projet est lié à la clé API
+                                     // requis si la clé n'a pas de projet associé
   "type":  "court",                  // "court" | "sequence" | "flashcards"
   "json": {
     "Duration": 10,                  // durée en minutes (optionnel)
@@ -564,6 +565,13 @@ Content-Type: application/json</pre>
             <label class="form-label fw-bold">Nom <span class="text-danger">*</span></label>
             <input type="text" id="pbApiKeyName" class="form-control" placeholder="Ex: Skill Production Moodle Banque">
             <div class="form-text">Identifiant lisible pour retrouver à quoi sert cette clé.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Projet associé</label>
+            <select id="pbApiKeyProject" class="form-select">
+              <option value="">— Aucun (créera un nouveau projet à chaque appel) —</option>
+            </select>
+            <div class="form-text">Le Skill déposera toujours ses fichiers dans ce projet.</div>
           </div>
           <div id="pbApiKeyError" class="text-danger small" style="display:none;"></div>
         </div>

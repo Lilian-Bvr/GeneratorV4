@@ -570,9 +570,12 @@ async function pbLoadApiKeys() {
     const lastUsed = k.last_used_at
       ? new Date(k.last_used_at * 1000).toLocaleDateString('fr-FR')
       : '<span class="text-muted">Jamais</span>';
+    const project = k.project_name
+      ? `<span class="badge bg-secondary">${_escHtml(k.project_name)}</span>`
+      : '<span class="text-muted small">—</span>';
     return `<tr>
       <td class="fw-semibold">${_escHtml(k.name)}</td>
-      <td class="font-monospace text-muted small">${_escHtml(k.id.slice(0, 8))}…</td>
+      <td>${project}</td>
       <td>${created}</td>
       <td>${lastUsed}</td>
       <td>
@@ -589,16 +592,31 @@ async function pbLoadApiKeys() {
     <table class="table table-sm table-hover align-middle">
       <thead class="table-light">
         <tr>
-          <th>Nom</th><th>ID</th><th>Créée le</th><th>Dernière utilisation</th><th></th>
+          <th>Nom</th><th>Projet</th><th>Créée le</th><th>Dernière utilisation</th><th></th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
 
-function pbOpenNewApiKeyModal() {
+async function pbOpenNewApiKeyModal() {
   document.getElementById('pbApiKeyName').value = '';
   document.getElementById('pbApiKeyError').style.display = 'none';
+
+  // Populate project dropdown
+  const select = document.getElementById('pbApiKeyProject');
+  select.innerHTML = '<option value="">— Aucun (créera un nouveau projet à chaque appel) —</option>';
+  try {
+    const res  = await fetch(`${SERVER_URL}/api/projects`, { headers: authHeaders() });
+    const data = await res.json();
+    (data.projects || []).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value       = p.id;
+      opt.textContent = p.name;
+      select.appendChild(opt);
+    });
+  } catch (e) { /* silently skip if projects fail to load */ }
+
   new bootstrap.Modal(document.getElementById('pbApiKeyModal')).show();
 }
 
@@ -608,10 +626,11 @@ async function pbCreateApiKey() {
   if (!name) { errEl.textContent = 'Nom requis.'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
 
+  const projectId = document.getElementById('pbApiKeyProject').value || null;
   const res  = await fetch(`${SERVER_URL}/api/admin/api-keys`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ name, project_id: projectId })
   });
   const data = await res.json();
   if (!res.ok) { errEl.textContent = data.error || 'Erreur.'; errEl.style.display = 'block'; return; }
@@ -620,7 +639,7 @@ async function pbCreateApiKey() {
 
   const revealModal = document.getElementById('pbApiKeyRevealModal');
   document.getElementById('pbApiKeyRevealValue').value  = data.api_key.key;
-  document.getElementById('pbApiKeyRevealUrl').value    = SERVER_URL;
+  document.getElementById('pbApiKeyRevealUrl').value    = window.location.origin + SERVER_URL;
   document.getElementById('pbApiKeyCopyIcon').className = 'bi bi-clipboard';
   document.getElementById('pbApiUrlCopyIcon').className = 'bi bi-clipboard';
 
