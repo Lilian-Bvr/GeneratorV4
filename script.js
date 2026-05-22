@@ -830,6 +830,11 @@ function fbRenderFiles() {
               <button class="btn btn-sm btn-outline-secondary me-1" onclick="fbDownloadFile('${f.id}', ${JSON.stringify(f.name).replace(/"/g,'&quot;')})">
                 <i class="bi bi-download"></i>
               </button>
+              ${f.download_token ? `
+              <button class="btn btn-sm btn-outline-success me-1" title="Copier l'URL Moodle"
+                      onclick="fbCopyMoodleUrl('${f.download_token}', this)">
+                <i class="bi bi-link-45deg"></i>
+              </button>` : ''}
               <button class="btn btn-sm btn-outline-primary me-1" onclick="fbPreviewFile('${f.id}')" title="Prévisualiser">
                 <i class="bi bi-play-circle"></i>
               </button>
@@ -909,6 +914,17 @@ async function fbOpenFile(file) {
   } catch (e) {
     alert('Erreur : ' + e.message);
   }
+}
+
+function fbCopyMoodleUrl(token, btn) {
+  const url = `${window.location.origin}${SERVER_URL}/api/scorm/${token}`;
+  navigator.clipboard.writeText(url).then(() => {
+    const icon = btn.querySelector('i');
+    if (icon) {
+      icon.className = 'bi bi-check2 text-success';
+      setTimeout(() => { icon.className = 'bi bi-link-45deg'; }, 2000);
+    }
+  });
 }
 
 async function fbPreviewFile(fileId) {

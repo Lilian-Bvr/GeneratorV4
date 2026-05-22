@@ -221,8 +221,97 @@ try {
     getDB()->exec("ALTER TABLE files ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'ready'");
 } catch (PDOException $e) { /* Already exists — ignore */ }
 
+// Auto-migration: download_token for public (Moodle-compatible) SCORM download URLs
+try {
+    getDB()->exec("ALTER TABLE files ADD COLUMN download_token CHAR(32) DEFAULT NULL");
+} catch (PDOException $e) { /* Already exists — ignore */ }
+
 // Detect current environment based on install path
 define('APP_ENV', strpos(__DIR__, 'experimental') !== false ? 'staging' : 'production');
+
+// ======== SCORM GENERATION ========
+
+function generateScormCourt(string $projectId, string $fileId, string $name, array $json): bool {
+    $templatePath = __DIR__ . '/../Modele/Modele_Court.zip';
+    if (!file_exists($templatePath)) return false;
+
+    // --- Build S0 ---
+    $exoKeys = array_values(array_filter(array_keys($json), fn($k) => strpos($k, 'EX') === 0));
+    sort($exoKeys);
+    $s0 = [
+        'Chapter_Title' => $name,
+        'Level'         => 1,
+        'S1_Exo_Total'  => count($exoKeys),
+        'S2_Exo_Total'  => 0,
+        'S3_Exo_Total'  => 0,
+        'S4_Exo_Total'  => 0,
+        'Durations'     => ['S1' => (int)($json['Duration'] ?? 10), 'S2' => 0, 'S3' => 0, 'S4' => 0],
+    ];
+
+    // --- Build S1 ---
+    $s1 = [];
+    foreach ($exoKeys as $exoKey) {
+        $exo      = $json[$exoKey];
+        $basePath = "Ressources_Sequences/S1/Audios/S1_{$exoKey}";
+        $built    = [
+            'Type'      => $exo['Type']      ?? '',
+            'Consigne'  => $exo['Consigne']  ?? '',
+            'Tentatives'=> $exo['Tentatives'] ?? 2,
+            'Image'     => null,
+            'Video'     => null,
+            'Feedback'  => $exo['Feedback']  ?? null,
+        ];
+        switch ($built['Type']) {
+            case 'QCU':
+                $built['Question']     = $exo['Question']     ?? '';
+                $built['Reponses']     = $exo['Reponses']     ?? [];
+                $built['BonneReponse'] = $exo['BonneReponse'] ?? '';
+                break;
+            case 'QCM':
+                $built['Question']     = $exo['Question']   ?? '';
+                $built['Reponses']     = $exo['Reponses']   ?? [];
+                $built['Corrections']  = $exo['Corrections'] ?? [];
+                break;
+            case 'True or false':
+                $built['Affirmation']  = $exo['Affirmation']  ?? '';
+                $built['BonneReponse'] = $exo['BonneReponse'] ?? '';
+                break;
+            case 'Matching':
+                $built['Match_Type'] = $exo['Match_Type'] ?? 'texte-texte';
+                $built['Paires']     = $exo['Paires']     ?? [];
+                break;
+            case 'Complete':
+                $built['Complete_Type']   = $exo['Complete_Type']   ?? 'options';
+                $built['Texte_Complet']   = $exo['Texte_Complet']   ?? '';
+                $built['Texte_Incomplet'] = $exo['Texte_Incomplet'] ?? '';
+                $built['Options']         = $exo['Options']         ?? [];
+                break;
+        }
+        $built['Audio_Enonce'] = !empty($exo['Audio_Enonce']['Transcription'])
+            ? ['Fichier' => "{$basePath}_main.mp3", 'Transcription' => $exo['Audio_Enonce']['Transcription']]
+            : null;
+
+        $s1[$exoKey] = $built;
+    }
+
+    // --- Write into template ZIP ---
+    $outputPath = projectDir($projectId) . '/' . $fileId . '.zip';
+    if (!copy($templatePath, $outputPath)) return false;
+
+    $zip = new ZipArchive();
+    if ($zip->open($outputPath) !== true) { unlink($outputPath); return false; }
+
+    $zip->deleteName('Ressources_Sequences/S0/variables.json');
+    $zip->addFromString('Ressources_Sequences/S0/variables.json',
+        json_encode($s0, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+    $zip->deleteName('Ressources_Sequences/S1/variables.json');
+    $zip->addFromString('Ressources_Sequences/S1/variables.json',
+        json_encode($s1, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+    $zip->close();
+    return true;
+}
 
 // --- DISABLED legacy /auth/* (use /api/users/* instead) ---
 if (strpos($path, '/auth/') === 0) {
@@ -1248,18 +1337,59 @@ if ($path === '/api/projects/from-json' && $method === 'POST') {
         if (!is_dir($dir)) mkdir($dir, 0755, true);
     }
 
-    $fileId = generateUUID();
-    $now    = time();
-    $pdo->prepare('INSERT INTO files (id, project_id, name, type, level, author_id, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        ->execute([$fileId, $projectId, $name, $type, 0, $user['id'], $now, $now, 'pending_import']);
+    $fileId        = generateUUID();
+    $downloadToken = bin2hex(random_bytes(16));
+    $now           = time();
+    $pdo->prepare('INSERT INTO files (id, project_id, name, type, level, author_id, created_at, updated_at, status, download_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$fileId, $projectId, $name, $type, 0, $user['id'], $now, $now, 'pending_import', $downloadToken]);
     $pdo->prepare('UPDATE projects SET updated_at = ? WHERE id = ?')->execute([$now, $projectId]);
 
-    file_put_contents(
-        projectDir($projectId) . '/' . $fileId . '.pending.json',
-        json_encode(['name' => $name, 'type' => $type, 'json' => $json], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
-    );
+    // Try to generate the SCORM ZIP immediately (text-only, no media)
+    $generated = ($type === 'court') && generateScormCourt($projectId, $fileId, $name, $json);
+    if ($generated) {
+        $pdo->prepare("UPDATE files SET status = 'ready' WHERE id = ?")
+            ->execute([$fileId]);
+    } else {
+        // Keep pending JSON as fallback for manual import via UI
+        file_put_contents(
+            projectDir($projectId) . '/' . $fileId . '.pending.json',
+            json_encode(['name' => $name, 'type' => $type, 'json' => $json], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        );
+    }
 
-    jsonResponse(['project_id' => $projectId, 'file_id' => $fileId], 201);
+    $scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host     = $_SERVER['HTTP_HOST'] ?? '';
+    $basePath = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');
+    $scormUrl = $generated
+        ? "{$scheme}://{$host}{$basePath}/api/scorm/{$downloadToken}"
+        : null;
+
+    jsonResponse([
+        'project_id' => $projectId,
+        'file_id'    => $fileId,
+        'generated'  => $generated,
+        'scorm_url'  => $scormUrl,
+    ], 201);
+}
+
+// Public SCORM download for Moodle (no auth — secured by opaque token)
+if (preg_match('#^/api/scorm/([a-f0-9]{32})$#', $path, $m) && $method === 'GET') {
+    $token = $m[1];
+    $pdo   = getDB();
+    $stmt  = $pdo->prepare("SELECT f.*, p.id AS project_id FROM files f JOIN projects p ON p.id = f.project_id WHERE f.download_token = ? AND f.status = 'ready'");
+    $stmt->execute([$token]);
+    $file  = $stmt->fetch();
+    if (!$file) { http_response_code(404); exit('Not found'); }
+
+    $zipPath = fileZipPath($file['project_id'], $file['id']);
+    if (!file_exists($zipPath)) { http_response_code(404); exit('ZIP not found'); }
+
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . rawurlencode($file['name']) . '.zip"');
+    header('Content-Length: ' . filesize($zipPath));
+    header('Cache-Control: no-cache');
+    readfile($zipPath);
+    exit;
 }
 
 // Get single project
