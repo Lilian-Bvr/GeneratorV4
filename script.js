@@ -830,10 +830,15 @@ function fbRenderFiles() {
               <button class="btn btn-sm btn-outline-secondary me-1" onclick="fbDownloadFile('${f.id}', ${JSON.stringify(f.name).replace(/"/g,'&quot;')})">
                 <i class="bi bi-download"></i>
               </button>
+              <button class="btn btn-sm ${f.download_token ? 'btn-success' : 'btn-outline-secondary'} me-1"
+                      title="${f.download_token ? 'Accès Moodle activé — cliquer pour désactiver' : 'Activer l\'accès Moodle'}"
+                      onclick="fbTogglePublish('${f.id}', ${f.download_token ? 'true' : 'false'}, this)">
+                <i class="bi bi-link-45deg"></i>
+              </button>
               ${f.download_token ? `
               <button class="btn btn-sm btn-outline-success me-1" title="Copier l'URL Moodle"
                       onclick="fbCopyMoodleUrl('${f.download_token}', this)">
-                <i class="bi bi-link-45deg"></i>
+                <i class="bi bi-clipboard"></i>
               </button>` : ''}
               <button class="btn btn-sm btn-outline-primary me-1" onclick="fbPreviewFile('${f.id}')" title="Prévisualiser">
                 <i class="bi bi-play-circle"></i>
@@ -914,6 +919,21 @@ async function fbOpenFile(file) {
   } catch (e) {
     alert('Erreur : ' + e.message);
   }
+}
+
+async function fbTogglePublish(fileId, isPublished, btn) {
+  const method = isPublished ? 'DELETE' : 'POST';
+  const res    = await fetch(`${SERVER_URL}/api/projects/${_fbProjectId}/files/${fileId}/publish`, {
+    method, headers: authHeaders()
+  });
+  if (!res.ok) { const d = await res.json(); alert(d.error || 'Erreur'); return; }
+
+  if (!isPublished) {
+    const data = await res.json();
+    // Copy URL immediately on activation
+    navigator.clipboard.writeText(data.scorm_url).catch(() => {});
+  }
+  await fbLoadFiles(); // refresh list
 }
 
 function fbCopyMoodleUrl(token, btn) {

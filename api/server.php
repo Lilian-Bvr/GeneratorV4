@@ -1372,6 +1372,47 @@ if ($path === '/api/projects/from-json' && $method === 'POST') {
     ], 201);
 }
 
+// Enable public SCORM URL for a file (generate download_token)
+if (preg_match('#^/api/projects/([a-f0-9\-]+)/files/([a-f0-9\-]+)/publish$#', $path, $m) && $method === 'POST') {
+    $user      = requireAuth();
+    $projectId = $m[1];
+    $fileId    = $m[2];
+    $pdo       = getDB();
+
+    if ($user['role'] !== 'admin') {
+        $a = $pdo->prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?');
+        $a->execute([$projectId, $user['id']]);
+        if (!$a->fetch()) jsonResponse(['error' => 'Accès refusé'], 403);
+    }
+    $stmt = $pdo->prepare('SELECT * FROM files WHERE id = ? AND project_id = ?');
+    $stmt->execute([$fileId, $projectId]);
+    if (!$stmt->fetch()) jsonResponse(['error' => 'Fichier introuvable'], 404);
+
+    $token = bin2hex(random_bytes(16));
+    $pdo->prepare('UPDATE files SET download_token = ? WHERE id = ?')->execute([$token, $fileId]);
+
+    $scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host     = $_SERVER['HTTP_HOST'] ?? '';
+    $basePath = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');
+    jsonResponse(['download_token' => $token, 'scorm_url' => "{$scheme}://{$host}{$basePath}/api/scorm/{$token}"]);
+}
+
+// Disable public SCORM URL for a file (revoke download_token)
+if (preg_match('#^/api/projects/([a-f0-9\-]+)/files/([a-f0-9\-]+)/publish$#', $path, $m) && $method === 'DELETE') {
+    $user      = requireAuth();
+    $projectId = $m[1];
+    $fileId    = $m[2];
+    $pdo       = getDB();
+
+    if ($user['role'] !== 'admin') {
+        $a = $pdo->prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?');
+        $a->execute([$projectId, $user['id']]);
+        if (!$a->fetch()) jsonResponse(['error' => 'Accès refusé'], 403);
+    }
+    $pdo->prepare('UPDATE files SET download_token = NULL WHERE id = ? AND project_id = ?')->execute([$fileId, $projectId]);
+    jsonResponse(['success' => true]);
+}
+
 // Public SCORM download for Moodle (no auth — secured by opaque token)
 if (preg_match('#^/api/scorm/([a-f0-9]{32})$#', $path, $m) && $method === 'GET') {
     $token = $m[1];
