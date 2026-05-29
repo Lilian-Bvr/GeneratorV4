@@ -494,6 +494,47 @@ PROMPT;
     jsonResponse(['feedback' => $data['content'][0]['text'] ?? '']);
 }
 
+// POST /api/lab/word-tts — Azure TTS fr-CA pour la référence par mot
+if ($path === '/api/lab/word-tts' && $method === 'POST') {
+    $key    = defined('AZURE_SPEECH_KEY')    ? AZURE_SPEECH_KEY    : '';
+    $region = defined('AZURE_SPEECH_REGION') ? AZURE_SPEECH_REGION : '';
+    if (!$key || !$region) jsonResponse(['error' => 'Azure Speech non configuré'], 503);
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $word  = trim($input['word'] ?? '');
+    $voice = $input['voice'] ?? 'fr-CA-SylvieNeural';
+    if (!$word) jsonResponse(['error' => 'Mot manquant'], 400);
+
+    $wordEsc = htmlspecialchars($word, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+    $ssml = "<?xml version='1.0' encoding='UTF-8'?>"
+          . "<speak version='1.0' xml:lang='fr-CA'>"
+          . "<voice xml:lang='fr-CA' name='{$voice}'>"
+          . "<prosody rate='0.85'>{$wordEsc}</prosody>"
+          . "</voice></speak>";
+
+    $ch = curl_init("https://{$region}.tts.speech.microsoft.com/cognitiveservices/v1");
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $ssml);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Ocp-Apim-Subscription-Key: {$key}",
+        'Content-Type: application/ssml+xml',
+        'X-Microsoft-OutputFormat: audio-16khz-128kbitrate-mono-mp3',
+        'User-Agent: SpeechAssessmentLab',
+    ]);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    $audio    = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode !== 200 || !$audio) jsonResponse(['error' => "Azure TTS error (HTTP $httpCode)"], 502);
+
+    header('Content-Type: audio/mpeg');
+    header('Cache-Control: public, max-age=86400');
+    echo $audio;
+    exit;
+}
+
 // ── Azure Speech Assessment token (no app auth — page standalone) ──────────
 if ($path === '/api/azure/speech-token' && $method === 'GET') {
     $key    = defined('AZURE_SPEECH_KEY')    ? AZURE_SPEECH_KEY    : '';
