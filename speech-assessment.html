@@ -433,6 +433,25 @@ function resetAnalyzeBtn() {
   b.innerHTML = '<i class="bi bi-waveform me-1"></i> Analyser l\'enregistrement';
 }
 
+// Extrait et joue un segment d'un AudioBuffer
+function playAudioSlice(audioBuffer, startSec, endSec) {
+  const sr = audioBuffer.sampleRate;
+  const startS = Math.max(0, Math.floor(startSec * sr));
+  const endS   = Math.min(audioBuffer.length, Math.ceil(endSec * sr));
+  const numS   = endS - startS;
+  if (numS <= 0) return;
+  const ctx = new AudioContext({ sampleRate: sr });
+  const buf = ctx.createBuffer(audioBuffer.numberOfChannels, numS, sr);
+  for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+    const src = audioBuffer.getChannelData(ch);
+    const dst = buf.getChannelData(ch);
+    for (let i = 0; i < numS; i++) dst[i] = src[startS + i] || 0;
+  }
+  const bSrc = ctx.createBufferSource();
+  bSrc.buffer = buf; bSrc.connect(ctx.destination); bSrc.start(0);
+  bSrc.onended = () => ctx.close();
+}
+
 // Joue un mot depuis l'enregistrement (via offset Azure en ticks 100ns)
 function playLearnersWord(offsetTicks, durationTicks) {
   if (!pcmAudioBuffer) return;
