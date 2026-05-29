@@ -671,30 +671,42 @@ function renderResults(paResult, jsonRaw) {
 }
 
 async function generateFeedback() {
-  const text = document.getElementById('phraseInput').value.trim();
-  const btn  = document.getElementById('feedbackBtn');
-  const box  = document.getElementById('feedbackBox');
-  const txt  = document.getElementById('feedbackText');
+  const box = document.getElementById('feedbackBox');
+  const txt = document.getElementById('feedbackText');
+  const btn = document.getElementById('feedbackBtn');
 
+  const bad = currentWords.filter(w => w.score < 80);
+
+  if (bad.length === 0) {
+    // Tout est bon — réponse instantanée, pas d'appel API
+    const p = lastScores.pron;
+    txt.textContent = p >= 92 ? 'Excellent ! 🎉' : p >= 85 ? 'Très bien !' : 'Bien, continuez à pratiquer.';
+    document.getElementById('resultsSection').style.display = 'block';
+    box.style.display = 'block';
+    return;
+  }
+
+  // Il y a des mots < 80 → analyse phonétique par Sonnet
   btn.disabled = true;
   txt.innerHTML = '<span class="text-muted" style="font-size:.85rem;"><i class="bi bi-hourglass-split me-1"></i> Analyse en cours…</span>';
+  document.getElementById('resultsSection').style.display = 'block';
   box.style.display = 'block';
 
   try {
     const res = await fetch(`${BASE}/api/lab/feedback`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phrase: text, scores: lastScores, words: currentWords })
+      body: JSON.stringify({
+        phrase: document.getElementById('phraseInput').value.trim(),
+        scores: lastScores,
+        words: currentWords   // le PHP filtre lui-même les mots < 80
+      })
     });
     if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `HTTP ${res.status}`); }
-    const data = await res.json();
-    txt.textContent = data.feedback;
+    txt.textContent = (await res.json()).feedback;
   } catch(e) {
     txt.textContent = '❌ ' + e.message;
   } finally {
     btn.disabled = false;
-    // Tout révéler en même temps : scores + mots + feedback
-    document.getElementById('resultsSection').style.display = 'block';
-    box.style.display = 'block';
   }
 }
 

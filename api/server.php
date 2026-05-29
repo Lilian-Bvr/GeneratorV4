@@ -438,46 +438,47 @@ if ($path === '/api/lab/feedback' && $method === 'POST') {
 
     if (!$phrase) jsonResponse(['error' => 'Phrase manquante'], 400);
 
-    // Construire le détail par mot avec position syllabique
+    // Seuls les mots < 80 sont transmis au modèle (les autres sont déjà gérés côté JS)
+    $badWords = array_filter($words, fn($w) => $w['score'] < 80);
     $wordLines = implode("\n", array_map(function($w) {
         $line = "• \"{$w['word']}\" : {$w['score']}/100";
         if (!empty($w['syllables'])) {
             $total = count($w['syllables']);
-            $positions = ['début','milieu','fin'];
-            $problems = [];
             foreach ($w['syllables'] as $i => $s) {
                 if ($s < 75) {
-                    $pos = $total === 1 ? 'tout le mot' :
+                    $pos = $total === 1 ? 'le mot entier' :
                            ($i === 0 ? 'début' : ($i === $total - 1 ? 'fin' : 'milieu'));
-                    $problems[] = "{$pos} ({$s}/100)";
+                    $line .= " — position difficile : {$pos} ({$s}/100)";
                 }
             }
-            if ($problems) $line .= ' — difficile : ' . implode(', ', $problems);
         }
-        if (isset($w['error']) && $w['error'] !== 'None') $line .= " [{$w['error']}]";
         return $line;
-    }, $words));
+    }, $badWords));
 
     $prompt = <<<PROMPT
-Tu es un assistant de prononciation pour des apprenants du français canadien.
+Tu es un expert en phonétique du français canadien et professeur de FLE.
 
-Phrase : « {$phrase} »
-Score global : {$sc['pron']}/100
+Phrase prononcée par l'apprenant : « {$phrase} »
 
-Résultats :
+Mots qui posent problème (score < 80) :
 {$wordLines}
 
-Règles STRICTES à suivre :
-1. Maximum 2 phrases très courtes, en français simple (niveau A1-B1).
-2. Mentionne SEULEMENT les mots avec un score < 80. Si aucun, félicite en une phrase et termine.
-3. Pour chaque mot difficile : indique la position (début/milieu/fin) si elle est fournie.
-4. N'invente JAMAIS quelle lettre ou quel son est incorrect — tu ne disposes pas de cette information.
-5. Suggère seulement de pratiquer le mot lentement, syllabe par syllabe.
-6. Pas de jargon phonétique (pas d'IPA, pas de "fricative", "occlusive", etc.).
+Tu connais la phrase complète, donc tu peux raisonner sur quels sons se trouvent exactement à la position difficile dans chaque mot.
+
+Pour chaque mot difficile :
+1. Identifie quel son est probablement en cause à cette position dans ce mot en français canadien (raisonne à partir de ta connaissance de la phonétique française).
+2. Compare ce son avec un mot du quotidien très courant qui contient le même son (ex : "café", "rue", "eau", "non", "tu").
+3. Donne un conseil pratique ultra-concret lié à ce son spécifique.
+
+Contraintes absolues :
+- 2 à 3 phrases maximum, en français accessible (niveau A2-B1).
+- Pas de transcription IPA, pas de termes techniques ("fricative", "occlusive", etc.).
+- Sois spécifique au mot et à la position — aucun conseil générique du type "pratiquez syllabe par syllabe".
+- Ne mentionne pas les scores numériques.
 PROMPT;
 
     $body = json_encode([
-        'model'      => 'claude-haiku-4-5-20251001',
+        'model'      => 'claude-sonnet-4-6',
         'max_tokens' => 300,
         'messages'   => [['role' => 'user', 'content' => $prompt]],
     ]);
