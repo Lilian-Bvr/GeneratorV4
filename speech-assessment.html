@@ -122,7 +122,7 @@
       <div id="scoresRow" class="d-flex gap-3 flex-wrap mb-4"></div>
 
       <h6 class="fw-semibold mb-2" style="font-size:.8rem;color:#9ca3af;letter-spacing:.06em;text-transform:uppercase;">
-        Détail par mot <span style="font-weight:400;">(cliquez pour voir les syllabes)</span>
+        Détail par mot
       </h6>
       <div id="wordBreakdown" style="line-height:2.6;"></div>
 
@@ -131,8 +131,8 @@
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#fef9c3;"></span> 60–79</span>
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#ffedd5;"></span> 40–59</span>
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#fee2e2;"></span> &lt; 40</span>
-        <span class="ms-2"><i class="bi bi-mic" style="font-size:.8rem;"></i> = votre syllabe &nbsp;
-               <i class="bi bi-volume-up" style="font-size:.8rem;"></i> = mot de référence</span>
+        <span class="ms-2"><i class="bi bi-mic" style="font-size:.8rem;"></i> = votre prononciation &nbsp;
+               <i class="bi bi-volume-up" style="font-size:.8rem;"></i> = référence ElevenLabs</span>
       </div>
 
       <!-- Réponse brute Azure -->
@@ -237,6 +237,10 @@ function addFrenchLiaisons(text) {
     .replace(new RegExp(`\\b(${liaisonsN})\\s+(${rv})`, 'gi'), '$1-n-$2');
 }
 
+// ElevenLabs reference audio state
+let elevenLabsAudioBuffer = null;
+let elevenLabsWordTimings  = null;
+
 async function listenElevenLabs() {
   const text    = document.getElementById('phraseInput').value.trim();
   const voiceId = voiceSelect.value;
@@ -245,17 +249,105 @@ async function listenElevenLabs() {
   const refAudio = document.getElementById('refAudio');
   if (!text)    { status.textContent = '⚠️ Entrez une phrase.'; return; }
   if (!voiceId) { status.textContent = '⚠️ Sélectionnez une voix.'; return; }
-  btn.disabled = true; status.textContent = '⏳ Génération…';
+
+  btn.disabled = true;
+  status.textContent = '⏳ Génération…';
+  elevenLabsAudioBuffer = null;
+  elevenLabsWordTimings  = null;
+
   try {
-    const res = await fetch(`${BASE}/api/lab/tts/${voiceId}`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ text: addFrenchLiaisons(text), model_id:'eleven_multilingual_v2', voice_settings:{stability:.35,similarity_boost:.82} })
+    const res = await fetch(`${BASE}/api/lab/tts-timestamps/${voiceId}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,  // texte original (sans liaison markup) pour des timestamps propres
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: { stability: .35, similarity_boost: .82 }
+      })
     });
-    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error||`HTTP ${res.status}`); }
-    refAudio.src = URL.createObjectURL(await res.blob());
-    refAudio.style.display = 'block'; refAudio.play(); status.textContent = '';
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `HTTP ${res.status}`); }
+    const data = await res.json();
+
+    // Décoder l'audio base64 et lancer la lecture
+    const audioBytes = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
+    const blob = new Blob([audioBytes], { type: 'audio/mpeg' });
+    refAudio.src = URL.createObjectURL(blob);
+    refAudio.style.display = 'block';
+    refAudio.play();
+    status.textContent = '';
+
+    // Décoder pour le slicing par mot
+    const tmpCtx = new AudioContext();
+    elevenLabsAudioBuffer = await tmpCtx.decodeAudioData(audioBytes.buffer.slice(0));
+    await tmpCtx.close();
+
+    // Construire les timings par mot depuis les timestamps de caractères
+    const al = data.alignment || data.normalized_alignment;
+    if (al) elevenLabsWordTimings = buildWordTimings(al.characters, al.character_start_times_seconds, al.character_end_times_seconds);
+
   } catch(e) { status.textContent = '❌ ' + e.message; }
-  finally     { btn.disabled = false; }
+  finally    { btn.disabled = false; }
+}
+
+// Convertit les timestamps caractère → [{word, startSec, endSec}]
+function buildWordTimings(chars, starts, ends) {
+  const words = [];
+  let wStart = null, wIdx = 0, wText = '';
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (/[\s,;:!?.«»"'()]/.test(c)) {
+      if (wText) { words.push({ word: wText.toLowerCase(), startSec: starts[wIdx], endSec: ends[i - 1] }); wText = ''; wStart = null; }
+    } else {
+      if (!wText) wIdx = i;
+      wText += c;
+    }
+  }
+  if (wText) words.push({ word: wText.toLowerCase(), startSec: starts[wIdx], endSec: ends[chars.length - 1] });
+  return words;
+}
+
+// Joue un mot depuis l'audio ElevenLabs (fallback: Web Speech)
+function playElevenLabsWord(wordText) {
+  if (!elevenLabsAudioBuffer || !elevenLabsWordTimings) { fallbackWebSpeech(wordText); return; }
+
+  // Les mots composés (allez-vous) sont splitttés côté ElevenLabs → on cherche chaque partie
+  const parts = wordText.toLowerCase().replace(/[,.'!?;:]/g, '').split(/[-\s]+/).filter(Boolean);
+  let startSec = null, endSec = null;
+  for (const part of parts) {
+    const t = elevenLabsWordTimings.find(w => w.word === part);
+    if (t) { if (startSec === null) startSec = t.startSec; endSec = t.endSec; }
+  }
+  if (startSec === null) { fallbackWebSpeech(wordText); return; }
+  playAudioSlice(elevenLabsAudioBuffer, startSec - 0.05, endSec + 0.1);
+}
+
+function fallbackWebSpeech(word) {
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(word);
+  utt.lang = 'fr-CA'; utt.rate = 0.75;
+  const v = window.speechSynthesis.getVoices();
+  const fr = v.find(x => x.lang === 'fr-CA') || v.find(x => x.lang.startsWith('fr'));
+  if (fr) utt.voice = fr;
+  window.speechSynthesis.speak(utt);
+}
+
+// Extrait et joue un segment d'un AudioBuffer
+function playAudioSlice(audioBuffer, startSec, endSec) {
+  const sr = audioBuffer.sampleRate;
+  const startS = Math.max(0, Math.floor(startSec * sr));
+  const endS   = Math.min(audioBuffer.length, Math.ceil(endSec * sr));
+  const numS   = endS - startS;
+  if (numS <= 0) return;
+
+  const ctx = new AudioContext({ sampleRate: sr });
+  const buf = ctx.createBuffer(audioBuffer.numberOfChannels, numS, sr);
+  for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+    const src = audioBuffer.getChannelData(ch);
+    const dst = buf.getChannelData(ch);
+    for (let i = 0; i < numS; i++) dst[i] = src[startS + i] || 0;
+  }
+  const bSrc = ctx.createBufferSource();
+  bSrc.buffer = buf; bSrc.connect(ctx.destination); bSrc.start(0);
+  bSrc.onended = () => ctx.close();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -426,56 +518,14 @@ function resetAnalyzeBtn() {
   b.innerHTML = '<i class="bi bi-waveform me-1"></i> Analyser l\'enregistrement';
 }
 
-// ══════════════════════════════════════════════════════════
-//  Lecture phonème — depuis l'enregistrement
-// ══════════════════════════════════════════════════════════
-function playLearnersPhoneme(offsetTicks, durationTicks) {
+// Joue un mot depuis l'enregistrement (via offset Azure en ticks 100ns)
+function playLearnersWord(offsetTicks, durationTicks) {
   if (!pcmAudioBuffer) return;
-  const sr = pcmAudioBuffer.sampleRate;
-  const pad = 0.04; // 40ms de contexte de chaque côté
+  const pad = 0.04;
   const startSec = offsetTicks / 10_000_000;
-  const durSec   = Math.max(0.08, durationTicks / 10_000_000);
-  const startS   = Math.max(0, Math.floor((startSec - pad) * sr));
-  const endS     = Math.min(pcmAudioBuffer.length, Math.ceil((startSec + durSec + pad) * sr));
-  const numS     = endS - startS;
-  if (numS <= 0) return;
-
-  const ctx = new AudioContext({ sampleRate: sr });
-  const buf = ctx.createBuffer(1, numS, sr);
-  const dst = buf.getChannelData(0);
-  const src = pcmAudioBuffer.getChannelData(0);
-  for (let i = 0; i < numS; i++) dst[i] = src[startS + i] || 0;
-
-  const bSrc = ctx.createBufferSource();
-  bSrc.buffer = buf; bSrc.connect(ctx.destination); bSrc.start(0);
-  bSrc.onended = () => ctx.close();
+  const durSec   = Math.max(0.1, durationTicks / 10_000_000);
+  playAudioSlice(pcmAudioBuffer, startSec - pad, startSec + durSec + pad);
 }
-
-// ══════════════════════════════════════════════════════════
-//  Lecture phonème — référence française (Web Speech)
-// ══════════════════════════════════════════════════════════
-const IPA_FR_MOT = {
-  'b':'bal','p':'pas','d':'de','t':'tu','g':'gare','k':'que',
-  'v':'voir','f':'fin','z':'zéro','s':'soir','ʒ':'je','ʃ':'chat',
-  'm':'mer','n':'non','ɲ':'agneau','ŋ':'parking','l':'là','ʁ':'rue',
-  'j':'yeux','w':'oui','ɥ':'lui',
-  'i':'si','e':'été','ɛ':'fête','a':'patte','ɑ':'pas',
-  'o':'beau','ɔ':'or','u':'ou','y':'tu','ø':'feu','œ':'peur','ə':'le',
-  'ɛ̃':'pain','ɑ̃':'dans','ɔ̃':'bon','œ̃':'brun',
-};
-
-function playReferencePhoneme(symbol, word) {
-  window.speechSynthesis.cancel();
-  // Prefer the example word for the phoneme, fallback to the actual word
-  const target = IPA_FR_MOT[symbol] || word || symbol;
-  const utt = new SpeechSynthesisUtterance(target);
-  utt.lang = 'fr-CA'; utt.rate = 0.7;
-  const voices = window.speechSynthesis.getVoices();
-  const v = voices.find(v => v.lang==='fr-CA') || voices.find(v => v.lang.startsWith('fr'));
-  if (v) utt.voice = v;
-  window.speechSynthesis.speak(utt);
-}
-window.speechSynthesis.onvoiceschanged = () => {};
 
 // ══════════════════════════════════════════════════════════
 //  Affichage des résultats
@@ -535,50 +585,37 @@ function renderResults(paResult, jsonRaw) {
     chip.className = 'w-chip';
     if (err === 'Omission')  chip.classList.add('omission');
     if (err === 'Insertion') chip.classList.add('insertion');
-    chip.style.background = c.bg; chip.style.color = c.text;
-    chip.innerHTML = `${w.Word}<sup style="font-size:.6rem;opacity:.6;margin-left:2px;">${Math.round(score)}</sup>`;
+    chip.style.background = c.bg;
+    chip.style.color      = c.text;
+    chip.style.cursor     = 'default';
 
-    // Syllabes (fr-CA retourne les scores + timings mais pas les textes — on numérote)
-    const syllables = w.Syllables ?? [];
-    if (syllables.length) {
-      const phRow = document.createElement('div');
-      phRow.className = 'ph-row';
+    // Texte + score
+    const label = document.createElement('span');
+    label.innerHTML = `${w.Word}<sup style="font-size:.6rem;opacity:.6;margin-left:2px;">${Math.round(score)}</sup>`;
+    chip.appendChild(label);
 
-      syllables.forEach((syl, idx) => {
-        const ps = syl.PronunciationAssessment?.AccuracyScore ?? 0;
-        const pc = scoreColor(ps);
+    // Boutons audio
+    const btns = document.createElement('span');
+    btns.style.cssText = 'display:inline-flex;gap:.15rem;margin-left:.35rem;vertical-align:middle;';
 
-        const phChip = document.createElement('span');
-        phChip.className = 'ph-chip';
-        phChip.style.background = pc.bg; phChip.style.color = pc.text;
-        phChip.innerHTML = `<span class="ph-sym">syl.${idx+1}</span><span class="ph-score">${Math.round(ps)}</span>`;
-
-        // 🎤 Jouer la syllabe de l'apprenant
-        if (syl.Offset != null && syl.Duration != null) {
-          const btnMe = document.createElement('button');
-          btnMe.className = 'ph-btn'; btnMe.title = 'Votre prononciation';
-          btnMe.innerHTML = '<i class="bi bi-mic"></i>';
-          btnMe.onclick = e => { e.stopPropagation(); playLearnersPhoneme(syl.Offset, syl.Duration); };
-          phChip.appendChild(btnMe);
-        }
-
-        // 🔊 Référence : dire le mot entier lentement
-        const btnRef = document.createElement('button');
-        btnRef.className = 'ph-btn'; btnRef.title = `Référence — "${w.Word}"`;
-        btnRef.innerHTML = '<i class="bi bi-volume-up"></i>';
-        btnRef.onclick = e => { e.stopPropagation(); playReferencePhoneme(null, w.Word); };
-        phChip.appendChild(btnRef);
-
-        phRow.appendChild(phChip);
-      });
-
-      chip.appendChild(phRow);
-      chip.addEventListener('click', () => {
-        chip.classList.toggle('open');
-        chip.querySelector('.ph-row').style.display = chip.classList.contains('open') ? 'flex' : 'none';
-      });
+    // 🎤 Mot de l'apprenant (depuis l'enregistrement)
+    if (w.Offset != null && w.Duration != null) {
+      const bMe = document.createElement('button');
+      bMe.className = 'ph-btn'; bMe.title = 'Votre prononciation';
+      bMe.innerHTML = '<i class="bi bi-mic"></i>';
+      bMe.onclick = () => playLearnersWord(w.Offset, w.Duration);
+      btns.appendChild(bMe);
     }
 
+    // 🔊 Mot de référence (tranche ElevenLabs, sinon Web Speech)
+    const bRef = document.createElement('button');
+    bRef.className = 'ph-btn';
+    bRef.title = elevenLabsWordTimings ? 'Référence (ElevenLabs)' : 'Référence (synthèse vocale)';
+    bRef.innerHTML = '<i class="bi bi-volume-up"></i>';
+    bRef.onclick = () => playElevenLabsWord(w.Word);
+    btns.appendChild(bRef);
+
+    chip.appendChild(btns);
     wb.appendChild(chip);
     wb.appendChild(document.createTextNode(' '));
   });

@@ -398,6 +398,34 @@ if (preg_match('#^/api/lab/tts/(.+)$#', $path, $matches) && $method === 'POST') 
     );
 }
 
+// POST /api/lab/tts-timestamps/{voiceId} — ElevenLabs TTS + character timestamps
+if (preg_match('#^/api/lab/tts-timestamps/(.+)$#', $path, $matches) && $method === 'POST') {
+    if (!defined('ELEVENLABS_API_KEY') || !ELEVENLABS_API_KEY) {
+        jsonResponse(['error' => 'ElevenLabs non configuré'], 503);
+    }
+    $voiceId = $matches[1];
+    $body    = file_get_contents('php://input');
+
+    $ch = curl_init("https://api.elevenlabs.io/v1/text-to-speech/$voiceId/with-timestamps");
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Accept: application/json',
+        'Content-Type: application/json',
+        'xi-api-key: ' . ELEVENLABS_API_KEY,
+    ]);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    http_response_code($httpCode);
+    header('Content-Type: application/json');
+    echo $response;
+    exit;
+}
+
 // ── Azure Speech Assessment token (no app auth — page standalone) ──────────
 if ($path === '/api/azure/speech-token' && $method === 'GET') {
     $key    = defined('AZURE_SPEECH_KEY')    ? AZURE_SPEECH_KEY    : '';
