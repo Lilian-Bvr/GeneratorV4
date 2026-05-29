@@ -122,7 +122,7 @@
       <div id="scoresRow" class="d-flex gap-3 flex-wrap mb-4"></div>
 
       <h6 class="fw-semibold mb-2" style="font-size:.8rem;color:#9ca3af;letter-spacing:.06em;text-transform:uppercase;">
-        Détail par mot <span style="font-weight:400;">(cliquez pour voir les phonèmes)</span>
+        Détail par mot <span style="font-weight:400;">(cliquez pour voir les syllabes)</span>
       </h6>
       <div id="wordBreakdown" style="line-height:2.6;"></div>
 
@@ -131,8 +131,8 @@
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#fef9c3;"></span> 60–79</span>
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#ffedd5;"></span> 40–59</span>
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#fee2e2;"></span> &lt; 40</span>
-        <span class="ms-2"><i class="bi bi-mic" style="font-size:.8rem;"></i> = votre prononciation &nbsp;
-               <i class="bi bi-volume-up" style="font-size:.8rem;"></i> = référence française</span>
+        <span class="ms-2"><i class="bi bi-mic" style="font-size:.8rem;"></i> = votre syllabe &nbsp;
+               <i class="bi bi-volume-up" style="font-size:.8rem;"></i> = mot de référence</span>
       </div>
 
       <!-- Réponse brute Azure -->
@@ -192,7 +192,6 @@ function onPhraseChange() {
 // ══════════════════════════════════════════════════════════
 //  ElevenLabs voices
 // ══════════════════════════════════════════════════════════
-const FR_LABELS = ['fr','french','français','francais','quebec','montreal','canadien'];
 const voiceSelect = document.getElementById('voiceSelect');
 
 (async () => {
@@ -201,21 +200,42 @@ const voiceSelect = document.getElementById('voiceSelect');
     if (!res.ok) throw new Error();
     const data = await res.json();
     const all = data.voices || [];
-    const fr = all.filter(v => {
-      const l = (v.labels?.language || v.labels?.accent || v.name || '').toLowerCase();
-      return FR_LABELS.some(k => l.includes(k));
-    });
-    const list = fr.length ? fr : all;
+
+    const isCA  = v => /canad|quebec|québec/i.test(v.labels?.accent || v.labels?.language || v.name || '');
+    const isFR  = v => /^fr|french|français|francais/i.test(v.labels?.language || v.labels?.accent || v.name || '');
+    // fr-CA first, then other French, then everything else
+    const sorted = [
+      ...all.filter(isCA),
+      ...all.filter(v => !isCA(v) && isFR(v)),
+      ...all.filter(v => !isCA(v) && !isFR(v)),
+    ];
+    const list = sorted.length ? sorted : all;
+
     voiceSelect.innerHTML = '';
     list.forEach(v => {
       const o = document.createElement('option'); o.value = v.voice_id;
-      o.textContent = v.name + (v.labels?.accent ? ` (${v.labels.accent})` : '');
+      const accent = v.labels?.accent || v.labels?.language || '';
+      o.textContent = v.name + (accent ? ` — ${accent}` : '');
       voiceSelect.appendChild(o);
     });
   } catch {
     voiceSelect.innerHTML = '<option value="">ElevenLabs non configuré</option>';
   }
 })();
+
+// ── Préprocesseur de liaisons fr-CA ──────────────────────────
+// Utilisé UNIQUEMENT pour ElevenLabs. Le texte affiché et envoyé à Azure reste intact.
+function addFrenchLiaisons(text) {
+  const V = 'aeiouàâéèêëîïôùûüæœhH';
+  const rv = `[${V}]`;
+  const liaisonsZ = 'les|mes|ses|des|ces|tes|nos|vos|aux|nous|vous|ils|elles|très|plus|assez|trop|deux|trois|six|dix';
+  const liaisonsT = 'est|sont|ont|comment|quand|dont|tout|fort|grand|petit|vient|tient';
+  const liaisonsN = 'on|en|un|mon|ton|son|bon|bien|rien|aucun';
+  return text
+    .replace(new RegExp(`\\b(${liaisonsZ})\\s+(${rv})`, 'gi'), '$1-z-$2')
+    .replace(new RegExp(`\\b(${liaisonsT})\\s+(${rv})`, 'gi'), '$1-t-$2')
+    .replace(new RegExp(`\\b(${liaisonsN})\\s+(${rv})`, 'gi'), '$1-n-$2');
+}
 
 async function listenElevenLabs() {
   const text    = document.getElementById('phraseInput').value.trim();
@@ -229,7 +249,7 @@ async function listenElevenLabs() {
   try {
     const res = await fetch(`${BASE}/api/lab/tts/${voiceId}`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ text, model_id:'eleven_multilingual_v2', voice_settings:{stability:.5,similarity_boost:.75} })
+      body: JSON.stringify({ text: addFrenchLiaisons(text), model_id:'eleven_multilingual_v2', voice_settings:{stability:.35,similarity_boost:.82} })
     });
     if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error||`HTTP ${res.status}`); }
     refAudio.src = URL.createObjectURL(await res.blob());
@@ -518,42 +538,35 @@ function renderResults(paResult, jsonRaw) {
     chip.style.background = c.bg; chip.style.color = c.text;
     chip.innerHTML = `${w.Word}<sup style="font-size:.6rem;opacity:.6;margin-left:2px;">${Math.round(score)}</sup>`;
 
-    // Phonèmes
-    const phonemes = w.Phonemes ?? [];
-    if (phonemes.length) {
+    // Syllabes (fr-CA retourne les scores + timings mais pas les textes — on numérote)
+    const syllables = w.Syllables ?? [];
+    if (syllables.length) {
       const phRow = document.createElement('div');
       phRow.className = 'ph-row';
 
-      phonemes.forEach((ph, idx) => {
-        const ps  = ph.PronunciationAssessment?.AccuracyScore ?? 0;
-        const pc  = scoreColor(ps);
-        const sym = ph.Phoneme || null; // null si Azure ne retourne pas le symbole (fr-CA)
+      syllables.forEach((syl, idx) => {
+        const ps = syl.PronunciationAssessment?.AccuracyScore ?? 0;
+        const pc = scoreColor(ps);
 
         const phChip = document.createElement('span');
         phChip.className = 'ph-chip';
         phChip.style.background = pc.bg; phChip.style.color = pc.text;
+        phChip.innerHTML = `<span class="ph-sym">syl.${idx+1}</span><span class="ph-score">${Math.round(ps)}</span>`;
 
-        // Symbole ou position
-        const label = sym
-          ? `<span class="ph-sym">${sym}</span>`
-          : `<span class="ph-sym" style="opacity:.5">ph.${idx+1}</span>`;
-
-        phChip.innerHTML = `${label}<span class="ph-score">${Math.round(ps)}</span>`;
-
-        // Bouton 🎤 (version apprenant)
-        if (ph.Offset != null && ph.Duration != null) {
+        // 🎤 Jouer la syllabe de l'apprenant
+        if (syl.Offset != null && syl.Duration != null) {
           const btnMe = document.createElement('button');
           btnMe.className = 'ph-btn'; btnMe.title = 'Votre prononciation';
           btnMe.innerHTML = '<i class="bi bi-mic"></i>';
-          btnMe.onclick = e => { e.stopPropagation(); playLearnersPhoneme(ph.Offset, ph.Duration); };
+          btnMe.onclick = e => { e.stopPropagation(); playLearnersPhoneme(syl.Offset, syl.Duration); };
           phChip.appendChild(btnMe);
         }
 
-        // Bouton 🔊 (référence française)
+        // 🔊 Référence : dire le mot entier lentement
         const btnRef = document.createElement('button');
-        btnRef.className = 'ph-btn'; btnRef.title = 'Référence française' + (sym ? ` — mot exemple : ${IPA_FR_MOT[sym]||w.Word}` : '');
+        btnRef.className = 'ph-btn'; btnRef.title = `Référence — "${w.Word}"`;
         btnRef.innerHTML = '<i class="bi bi-volume-up"></i>';
-        btnRef.onclick = e => { e.stopPropagation(); playReferencePhoneme(sym, w.Word); };
+        btnRef.onclick = e => { e.stopPropagation(); playReferencePhoneme(null, w.Word); };
         phChip.appendChild(btnRef);
 
         phRow.appendChild(phChip);
