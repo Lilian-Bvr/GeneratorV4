@@ -365,6 +365,36 @@ if (preg_match('#^/api/elevenlabs/tts/(.+)$#', $path, $matches) && $method === '
     );
 }
 
+// ── Azure Speech Assessment token (no app auth — page standalone) ──────────
+if ($path === '/api/azure/speech-token' && $method === 'GET') {
+    $key    = defined('AZURE_SPEECH_KEY')    ? AZURE_SPEECH_KEY    : '';
+    $region = defined('AZURE_SPEECH_REGION') ? AZURE_SPEECH_REGION : '';
+
+    if (!$key || !$region) {
+        jsonResponse(['error' => 'Azure Speech non configuré (AZURE_SPEECH_KEY / AZURE_SPEECH_REGION manquants dans config.php)'], 503);
+    }
+
+    $tokenUrl = "https://{$region}.api.cognitive.microsoft.com/sts/v1.0/issueToken";
+    $ch = curl_init($tokenUrl);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Ocp-Apim-Subscription-Key: {$key}",
+        'Content-Length: 0',
+    ]);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    $token    = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode !== 200 || !$token) {
+        jsonResponse(['error' => "Échec Azure token (HTTP {$httpCode}) — vérifiez la clé et la région"], 502);
+    }
+
+    jsonResponse(['token' => $token, 'region' => $region]);
+}
+
 if ($path === '/api/gemini/generate' && $method === 'POST') {
     requireAuth();
     if (!GEMINI_API_KEY) jsonResponse(['error' => 'Clé Gemini non configurée'], 503);

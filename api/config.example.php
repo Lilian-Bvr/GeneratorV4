@@ -15,6 +15,10 @@ define('GEMINI_API_KEY', '');
 define('DEEPL_API_KEY', ''); // DeepL API key (free: api-free.deepl.com, pro: api.deepl.com)
 define('ANTHROPIC_API_KEY', ''); // sk-ant-... from console.anthropic.com
 
+// Azure Cognitive Services — Speech Assessment
+define('AZURE_SPEECH_KEY', '');    // Clé depuis Azure Portal > Speech resource > Keys and Endpoint
+define('AZURE_SPEECH_REGION', ''); // Ex: canadacentral, eastus, francecentral
+
 // Session duration in seconds (8 hours)
 define('SESSION_EXPIRY', 8 * 60 * 60);
 
