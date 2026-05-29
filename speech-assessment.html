@@ -6,7 +6,7 @@
   <title>Speech Assessment — Lab</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-  <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
+  <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
   <style>
     body { background: #f0f2f5; font-family: 'Segoe UI', system-ui, sans-serif; }
 
@@ -18,23 +18,22 @@
       margin-bottom: 1.5rem;
     }
 
-    /* ── Phrase display ── */
-    #phraseText {
-      font-size: 1.75rem;
+    #phraseDisplay {
+      font-size: 1.6rem;
       font-weight: 600;
       color: #1a1a2e;
-      line-height: 1.4;
-      letter-spacing: .01em;
+      line-height: 1.45;
+      min-height: 2.5rem;
     }
-    #phraseIpa {
-      font-size: 1.05rem;
+    #ipaDisplay {
+      font-size: 1rem;
       color: #6b7280;
       font-style: italic;
-      margin-top: .35rem;
+      margin-top: .3rem;
       letter-spacing: .04em;
+      min-height: 1.4rem;
     }
 
-    /* ── Waveform canvas ── */
     #waveformCanvas {
       display: block;
       width: 100%;
@@ -43,12 +42,10 @@
       background: #f8f9fa;
     }
 
-    /* ── Results ── */
     .score-badge {
       display: inline-flex;
       flex-direction: column;
       align-items: center;
-      background: #f8f9fa;
       border-radius: 12px;
       padding: .75rem 1.25rem;
       min-width: 90px;
@@ -66,7 +63,6 @@
       margin-top: .25rem;
     }
 
-    /* ── Word coloring ── */
     .word-chip {
       display: inline-block;
       padding: .25rem .55rem;
@@ -76,69 +72,39 @@
       font-weight: 500;
       cursor: pointer;
       transition: opacity .15s;
-      position: relative;
     }
-    .word-chip:hover { opacity: .85; }
-    .word-chip.omission {
-      text-decoration: line-through;
-      opacity: .5;
-    }
-    .word-chip.insertion {
-      border: 2px dashed #0d6efd;
-    }
+    .word-chip:hover { opacity: .82; }
+    .word-chip.omission { text-decoration: line-through; opacity: .5; }
+    .word-chip.insertion { outline: 2px dashed #0d6efd; }
 
     .phoneme-row {
       display: none;
       font-size: .78rem;
       margin-top: .3rem;
-      gap: .15rem;
+      gap: .12rem;
       flex-wrap: wrap;
     }
     .word-chip.open .phoneme-row { display: flex; }
     .phoneme-dot {
       padding: .1rem .3rem;
       border-radius: 4px;
-      background: rgba(0,0,0,.06);
       font-family: monospace;
-      font-size: .8rem;
+      font-size: .82rem;
     }
 
-    /* ── Rec button states ── */
     #recBtn.recording {
-      background: #dc3545;
-      border-color: #dc3545;
-      animation: pulse 1.2s infinite;
-    }
-    @keyframes pulse {
-      0%,100% { box-shadow: 0 0 0 0 rgba(220,53,69,.4); }
-      50%      { box-shadow: 0 0 0 10px rgba(220,53,69,0); }
+      background: #dc3545; border-color: #dc3545; color: white;
+      animation: pulse-red 1.2s infinite;
     }
     #analyzeBtn.analyzing {
-      background: #0d6efd;
-      border-color: #0d6efd;
       animation: pulse-blue 1.2s infinite;
     }
-    @keyframes pulse-blue {
-      0%,100% { box-shadow: 0 0 0 0 rgba(13,110,253,.4); }
-      50%      { box-shadow: 0 0 0 10px rgba(13,110,253,0); }
-    }
-
-    .difficulty-badge {
-      font-size: .72rem;
-      padding: .2rem .55rem;
-      border-radius: 20px;
-      font-weight: 600;
-      letter-spacing: .04em;
-    }
-
-    #statusMsg {
-      font-size: .85rem;
-      min-height: 1.4em;
-    }
+    @keyframes pulse-red  { 0%,100%{box-shadow:0 0 0 0 rgba(220,53,69,.4)} 50%{box-shadow:0 0 0 10px rgba(220,53,69,0)} }
+    @keyframes pulse-blue { 0%,100%{box-shadow:0 0 0 0 rgba(13,110,253,.4)} 50%{box-shadow:0 0 0 10px rgba(13,110,253,0)} }
   </style>
 </head>
 <body>
-<div class="container py-4" style="max-width:760px;">
+<div class="container py-4" style="max-width:780px;">
 
   <!-- Header -->
   <div class="d-flex align-items-center gap-3 mb-4">
@@ -149,33 +115,51 @@
     <span class="badge bg-warning text-dark ms-auto">Expérimental</span>
   </div>
 
-  <!-- Phrase selector -->
+  <!-- ── Phrase ── -->
   <div class="lab-card">
-    <div class="d-flex align-items-center gap-2 mb-3">
-      <label class="form-label fw-semibold mb-0 text-nowrap" style="font-size:.9rem;">Phrase :</label>
-      <select id="phraseSelect" class="form-select form-select-sm" onchange="loadPhrase()"></select>
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h6 class="fw-semibold mb-0" style="color:#374151;">Phrase à lire</h6>
+      <div class="d-flex align-items-center gap-2">
+        <label class="text-muted small mb-0 text-nowrap">Exemple :</label>
+        <select id="presetSelect" class="form-select form-select-sm" style="max-width:220px;" onchange="loadPreset()">
+          <option value="">— choisir —</option>
+        </select>
+      </div>
     </div>
 
-    <!-- Phrase display -->
-    <div id="phraseText"></div>
-    <div id="phraseIpa"></div>
+    <textarea id="phraseInput" class="form-control mb-2" rows="2"
+      placeholder="Écrivez ici la phrase à lire…"
+      oninput="onPhraseChange()" style="font-size:1.1rem;resize:vertical;"></textarea>
 
-    <!-- Listen button -->
-    <div class="mt-3">
-      <button class="btn btn-sm btn-outline-secondary" onclick="listenReference()">
+    <div class="mb-1">
+      <input id="ipaInput" class="form-control form-control-sm" placeholder="Transcription phonétique IPA (optionnel)" oninput="onIpaChange()" style="font-style:italic;color:#6b7280;">
+    </div>
+
+    <!-- Affichage lecture -->
+    <div class="mt-3 p-3 rounded" style="background:#f8f9fa;min-height:56px;">
+      <div id="phraseDisplay" class="mb-1"></div>
+      <div id="ipaDisplay"></div>
+    </div>
+
+    <!-- Écouter via ElevenLabs -->
+    <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
+      <button class="btn btn-sm btn-outline-secondary" onclick="listenElevenLabs()" id="listenBtn">
         <i class="bi bi-volume-up me-1"></i> Écouter la référence
       </button>
+      <select id="voiceSelect" class="form-select form-select-sm" style="max-width:200px;">
+        <option value="">Chargement des voix…</option>
+      </select>
+      <audio id="refAudio" style="display:none;height:32px;" controls></audio>
     </div>
+    <div id="listenStatus" class="text-muted small mt-1"></div>
   </div>
 
-  <!-- Recording -->
+  <!-- ── Enregistrement ── -->
   <div class="lab-card">
     <h6 class="fw-semibold mb-3" style="color:#374151;">Votre enregistrement</h6>
 
-    <!-- Waveform -->
     <canvas id="waveformCanvas"></canvas>
 
-    <!-- Controls -->
     <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
       <button id="recBtn" class="btn btn-outline-danger" onclick="toggleRecording()">
         <i class="bi bi-record-circle me-1"></i> Enregistrer
@@ -184,37 +168,31 @@
         <audio id="recordedAudio" controls style="width:100%;height:36px;"></audio>
       </div>
     </div>
-
-    <div id="statusMsg" class="text-muted mt-2">Appuyez sur Enregistrer pour commencer.</div>
+    <div id="recStatus" class="text-muted small mt-2">Appuyez sur Enregistrer pour commencer.</div>
   </div>
 
-  <!-- Analysis -->
+  <!-- ── Analyse ── -->
   <div class="lab-card">
     <h6 class="fw-semibold mb-3" style="color:#374151;">Analyse Azure Speech</h6>
 
     <button id="analyzeBtn" class="btn btn-primary" onclick="startAnalysis()">
       <i class="bi bi-waveform me-1"></i> Analyser ma prononciation
     </button>
-    <p class="text-muted small mt-2 mb-0">L'analyse ouvre une nouvelle session microphone — lisez la phrase à voix haute quand vous êtes prêt.</p>
+    <p class="text-muted small mt-2 mb-0">L'analyse ouvre une nouvelle session microphone — lisez la phrase à voix haute quand vous êtes prêt·e.</p>
 
-    <!-- Results -->
     <div id="resultsSection" style="display:none;" class="mt-4">
       <hr class="my-3">
-
-      <!-- Global scores -->
       <div id="scoresRow" class="d-flex gap-3 flex-wrap mb-4"></div>
 
-      <!-- Word breakdown -->
-      <h6 class="fw-semibold mb-2" style="font-size:.85rem;color:#6b7280;letter-spacing:.05em;text-transform:uppercase;">Détail par mot</h6>
-      <div id="wordBreakdown" style="line-height:2.2;"></div>
+      <h6 class="fw-semibold mb-2" style="font-size:.82rem;color:#9ca3af;letter-spacing:.06em;text-transform:uppercase;">Détail par mot</h6>
+      <div id="wordBreakdown" style="line-height:2.4;"></div>
 
-      <!-- Legend -->
-      <div class="d-flex gap-3 mt-3 flex-wrap" style="font-size:.78rem;color:#6b7280;">
-        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#d1fae5;"></span> ≥ 80 — Excellent</span>
-        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fef9c3;"></span> 60–79 — Bon</span>
-        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#ffedd5;"></span> 40–59 — À améliorer</span>
-        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fee2e2;"></span> &lt; 40 — Difficile</span>
-        <span><i class="bi bi-hand-index-thumb"></i> Cliquez sur un mot pour voir les phonèmes</span>
+      <div class="d-flex gap-3 mt-3 flex-wrap" style="font-size:.76rem;color:#9ca3af;">
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#d1fae5;"></span> ≥ 80</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fef9c3;"></span> 60–79</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#ffedd5;"></span> 40–59</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fee2e2;"></span> &lt; 40</span>
+        <span style="margin-left:.5rem;"><i class="bi bi-hand-index-thumb"></i> Clic sur un mot = phonèmes</span>
       </div>
     </div>
 
@@ -224,117 +202,158 @@
 </div>
 
 <script>
-// ════════════════════════════════════════════════════════════════
-//  PHRASES (fr-CA) — text + transcription IPA syllabée
-// ════════════════════════════════════════════════════════════════
-const PHRASES = [
-  {
-    label: "Bonjour (Facile)",
-    text: "Bonjour, comment allez-vous ?",
-    ipa: "/bɔ̃.ʒuʁ/ — /kɔ.mɑ̃/ — /a.le.vu/"
-  },
-  {
-    label: "Café (Facile)",
-    text: "Je voudrais un café, s'il vous plaît.",
-    ipa: "/ʒə.vu.dʁɛ/ — /œ̃.ka.fe/ — /sil.vu.plɛ/"
-  },
-  {
-    label: "Météo (Facile)",
-    text: "Il fait très beau aujourd'hui.",
-    ipa: "/il.fɛ.tʁɛ.bo/ — /o.ʒuʁ.dɥi/"
-  },
-  {
-    label: "Présentation (Moyen)",
-    text: "Je m'appelle Marie et j'habite à Montréal.",
-    ipa: "/ʒə.ma.pɛl.ma.ʁi/ — /e.ʒa.bit/ — /a.mɔ̃.ʁe.al/"
-  },
-  {
-    label: "Direction (Moyen)",
-    text: "Pourriez-vous m'indiquer le chemin pour la bibliothèque ?",
-    ipa: "/pu.ʁje.vu/ — /mɛ̃.di.ke/ — /lə.ʃə.mɛ̃/ — /puʁ.la.bi.bli.o.tɛk/"
-  },
-  {
-    label: "Rendez-vous (Difficile)",
-    text: "J'aimerais prendre rendez-vous avec le médecin s'il vous plaît.",
-    ipa: "/ʒɛ.mʁɛ.pʁɑ̃dʁ/ — /ʁɑ̃.de.vu/ — /a.vɛk.lə.me.dsɛ̃/ — /sil.vu.plɛ/"
-  },
-  {
-    label: "Spécialités québécoises (Difficile)",
-    text: "Les tourtières et la poutine sont des spécialités québécoises.",
-    ipa: "/le.tuʁ.tjɛʁ/ — /e.la.pu.tin/ — /sɔ̃.de.spe.sja.li.te/ — /ke.be.kwaz/"
-  }
+// ════════════════════════════════════════════════════════
+//  Server base URL (works for /experimental and /)
+// ════════════════════════════════════════════════════════
+const BASE = window.location.origin +
+  window.location.pathname.replace(/\/[^/]*$/, '');
+
+// ════════════════════════════════════════════════════════
+//  Preset phrases
+// ════════════════════════════════════════════════════════
+const PRESETS = [
+  { label:"Bonjour (Facile)",         text:"Bonjour, comment allez-vous ?",                                    ipa:"/bɔ̃.ʒuʁ/ — /kɔ.mɑ̃/ — /a.le.vu/" },
+  { label:"Café (Facile)",            text:"Je voudrais un café, s'il vous plaît.",                            ipa:"/ʒə.vu.dʁɛ/ — /œ̃.ka.fe/ — /sil.vu.plɛ/" },
+  { label:"Météo (Facile)",           text:"Il fait très beau aujourd'hui.",                                   ipa:"/il.fɛ.tʁɛ.bo/ — /o.ʒuʁ.dɥi/" },
+  { label:"Présentation (Moyen)",     text:"Je m'appelle Marie et j'habite à Montréal.",                       ipa:"/ʒə.ma.pɛl.ma.ʁi/ — /e.ʒa.bit/ — /a.mɔ̃.ʁe.al/" },
+  { label:"Direction (Moyen)",        text:"Pourriez-vous m'indiquer le chemin pour la bibliothèque ?",        ipa:"/pu.ʁje.vu/ — /mɛ̃.di.ke/ — /lə.ʃə.mɛ̃/ — /puʁ.la.bi.bli.o.tɛk/" },
+  { label:"Rendez-vous (Difficile)",  text:"J'aimerais prendre rendez-vous avec le médecin, s'il vous plaît.", ipa:"/ʒɛ.mʁɛ.pʁɑ̃dʁ/ — /ʁɑ̃.de.vu/ — /a.vɛk.lə.me.dsɛ̃/ — /sil.vu.plɛ/" },
+  { label:"Tourtière (Difficile)",    text:"Les tourtières et la poutine sont des spécialités québécoises.",   ipa:"/le.tuʁ.tjɛʁ/ — /e.la.pu.tin/ — /sɔ̃.de.spe.sja.li.te/ — /ke.be.kwaz/" },
 ];
 
-// ════════════════════════════════════════════════════════════════
-//  Init
-// ════════════════════════════════════════════════════════════════
-const sel = document.getElementById('phraseSelect');
-PHRASES.forEach((p, i) => {
-  const opt = document.createElement('option');
-  opt.value = i;
-  opt.textContent = p.label;
-  sel.appendChild(opt);
+const presetSelect = document.getElementById('presetSelect');
+PRESETS.forEach((p, i) => {
+  const o = document.createElement('option');
+  o.value = i; o.textContent = p.label;
+  presetSelect.appendChild(o);
 });
-loadPhrase();
 
-function loadPhrase() {
-  const p = PHRASES[parseInt(sel.value)];
-  document.getElementById('phraseText').textContent = p.text;
-  document.getElementById('phraseIpa').textContent = p.ipa;
+function loadPreset() {
+  const i = presetSelect.value;
+  if (i === '') return;
+  const p = PRESETS[parseInt(i)];
+  document.getElementById('phraseInput').value = p.text;
+  document.getElementById('ipaInput').value    = p.ipa;
+  onPhraseChange(); onIpaChange();
+}
+
+function onPhraseChange() {
+  document.getElementById('phraseDisplay').textContent = document.getElementById('phraseInput').value;
   clearResults();
 }
-
-// ════════════════════════════════════════════════════════════════
-//  Reference TTS (Web Speech API)
-// ════════════════════════════════════════════════════════════════
-function listenReference() {
-  window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(PHRASES[parseInt(sel.value)].text);
-  utt.lang = 'fr-CA';
-  utt.rate = 0.88;
-
-  // Try to pick a fr-CA voice, fallback to fr-FR
-  const voices = window.speechSynthesis.getVoices();
-  const frCA = voices.find(v => v.lang === 'fr-CA')
-            || voices.find(v => v.lang.startsWith('fr'));
-  if (frCA) utt.voice = frCA;
-
-  window.speechSynthesis.speak(utt);
+function onIpaChange() {
+  document.getElementById('ipaDisplay').textContent = document.getElementById('ipaInput').value;
 }
-// Load voices when available (Chrome loads them async)
-window.speechSynthesis.onvoiceschanged = () => {};
 
-// ════════════════════════════════════════════════════════════════
-//  Recording (MediaRecorder)
-// ════════════════════════════════════════════════════════════════
-let mediaRecorder = null;
-let recordedChunks = [];
-let audioCtx = null;
-let analyserNode = null;
-let animId = null;
-let micStream = null;
+// Init display
+document.getElementById('phraseDisplay').textContent = '';
+document.getElementById('ipaDisplay').textContent    = '';
 
-const recBtn     = document.getElementById('recBtn');
-const statusMsg  = document.getElementById('statusMsg');
-const canvas     = document.getElementById('waveformCanvas');
-const canvasCtx  = canvas.getContext('2d');
+// ════════════════════════════════════════════════════════
+//  ElevenLabs voices
+// ════════════════════════════════════════════════════════
+const FR_LABELS = ['fr','french','français','francais','quebec','montréal','montreal','canadien'];
+const voiceSelect = document.getElementById('voiceSelect');
+
+async function loadVoices() {
+  try {
+    const res = await fetch(`${BASE}/api/lab/voices`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const voices = (data.voices || []).filter(v => {
+      const lbl = (v.labels?.language || v.labels?.accent || v.name || '').toLowerCase();
+      return FR_LABELS.some(k => lbl.includes(k));
+    });
+
+    voiceSelect.innerHTML = '';
+    if (voices.length === 0) {
+      // Fallback: show all voices
+      (data.voices || []).forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.voice_id; o.textContent = v.name;
+        voiceSelect.appendChild(o);
+      });
+    } else {
+      voices.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.voice_id;
+        const accent = v.labels?.accent ? ` (${v.labels.accent})` : '';
+        o.textContent = v.name + accent;
+        voiceSelect.appendChild(o);
+      });
+    }
+  } catch(e) {
+    voiceSelect.innerHTML = '<option value="">ElevenLabs non configuré</option>';
+  }
+}
+loadVoices();
+
+// ════════════════════════════════════════════════════════
+//  ElevenLabs TTS — référence
+// ════════════════════════════════════════════════════════
+async function listenElevenLabs() {
+  const text    = document.getElementById('phraseInput').value.trim();
+  const voiceId = voiceSelect.value;
+  const btn     = document.getElementById('listenBtn');
+  const status  = document.getElementById('listenStatus');
+  const refAudio = document.getElementById('refAudio');
+
+  if (!text)    { status.textContent = '⚠️ Entrez d\'abord une phrase.'; return; }
+  if (!voiceId) { status.textContent = '⚠️ Sélectionnez une voix.'; return; }
+
+  btn.disabled = true;
+  status.textContent = '⏳ Génération audio…';
+
+  try {
+    const res = await fetch(`${BASE}/api/lab/tts/${voiceId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    refAudio.src = url;
+    refAudio.style.display = 'block';
+    refAudio.play();
+    status.textContent = '';
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ════════════════════════════════════════════════════════
+//  Recording
+// ════════════════════════════════════════════════════════
+let mediaRecorder = null, recordedChunks = [], micStream = null;
+let audioCtx = null, analyserNode = null, animId = null;
+
+const recBtn    = document.getElementById('recBtn');
+const recStatus = document.getElementById('recStatus');
+const canvas    = document.getElementById('waveformCanvas');
+const canvasCtx = canvas.getContext('2d');
 
 async function toggleRecording() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    stopRecording();
-  } else {
-    await startRecording();
-  }
+  if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording();
+  else await startRecording();
 }
 
 async function startRecording() {
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
   } catch(e) {
-    statusMsg.textContent = '⚠️ Accès au microphone refusé. Autorisez-le dans votre navigateur.';
+    recStatus.textContent = '⚠️ Accès au microphone refusé.';
     return;
   }
-
   recordedChunks = [];
   mediaRecorder = new MediaRecorder(micStream);
   mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
@@ -343,13 +362,11 @@ async function startRecording() {
 
   recBtn.classList.add('recording');
   recBtn.innerHTML = '<i class="bi bi-stop-circle me-1"></i> Arrêter';
-  statusMsg.textContent = '🔴 Enregistrement en cours…';
-
+  recStatus.textContent = '🔴 Enregistrement en cours…';
   document.getElementById('playbackSection').style.display = 'none';
 
-  // Waveform
-  audioCtx   = new AudioContext();
-  const src  = audioCtx.createMediaStreamSource(micStream);
+  audioCtx     = new AudioContext();
+  const src    = audioCtx.createMediaStreamSource(micStream);
   analyserNode = audioCtx.createAnalyser();
   analyserNode.fftSize = 1024;
   src.connect(analyserNode);
@@ -367,60 +384,41 @@ function stopRecording() {
 
 function onRecordingStop() {
   const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-  const url  = URL.createObjectURL(blob);
-  const audio = document.getElementById('recordedAudio');
-  audio.src = url;
+  document.getElementById('recordedAudio').src = URL.createObjectURL(blob);
   document.getElementById('playbackSection').style.display = 'flex';
-  statusMsg.textContent = '✅ Enregistrement terminé — écoutez-vous, puis lancez l\'analyse.';
+  recStatus.textContent = '✅ Terminé — écoutez-vous, puis lancez l\'analyse.';
 }
 
 function drawWaveform() {
   animId = requestAnimationFrame(drawWaveform);
   const buf = new Uint8Array(analyserNode.frequencyBinCount);
   analyserNode.getByteTimeDomainData(buf);
-
   const w = canvas.width = canvas.offsetWidth;
   const h = canvas.height = canvas.offsetHeight;
   canvasCtx.clearRect(0, 0, w, h);
   canvasCtx.strokeStyle = '#0d6efd';
   canvasCtx.lineWidth = 2;
   canvasCtx.beginPath();
-  const step = w / buf.length;
   buf.forEach((v, i) => {
-    const x = i * step;
+    const x = i * (w / buf.length);
     const y = (v / 128.0) * h / 2;
     i === 0 ? canvasCtx.moveTo(x, y) : canvasCtx.lineTo(x, y);
   });
   canvasCtx.stroke();
 }
-
 function clearCanvas() {
-  canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
+  canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight;
   canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
-// ════════════════════════════════════════════════════════════════
-//  Azure Speech Assessment
-// ════════════════════════════════════════════════════════════════
-let azureToken  = null;
-let azureRegion = null;
-
-async function fetchToken() {
-  // Detect server URL (same origin, strip /speech-assessment.html)
-  const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
-  const res = await fetch(base + '/api/azure/speech-token');
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
-  }
-  const data = await res.json();
-  azureToken  = data.token;
-  azureRegion = data.region;
-}
-
+// ════════════════════════════════════════════════════════
+//  Azure analysis
+// ════════════════════════════════════════════════════════
 async function startAnalysis() {
-  const analyzeBtn = document.getElementById('analyzeBtn');
+  const text = document.getElementById('phraseInput').value.trim();
+  if (!text) { document.getElementById('analysisStatus').textContent = '⚠️ Entrez d\'abord une phrase.'; return; }
+
+  const analyzeBtn     = document.getElementById('analyzeBtn');
   const analysisStatus = document.getElementById('analysisStatus');
 
   analyzeBtn.disabled = true;
@@ -428,56 +426,49 @@ async function startAnalysis() {
   analyzeBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Analyse en cours…';
   clearResults();
 
+  let token, region;
   try {
-    // Refresh token if needed
-    await fetchToken();
+    const r = await fetch(`${BASE}/api/azure/speech-token`);
+    if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error||`HTTP ${r.status}`); }
+    const d = await r.json();
+    token = d.token; region = d.region;
   } catch(e) {
     analysisStatus.textContent = '❌ ' + e.message;
-    resetAnalyzeBtn();
-    return;
+    resetAnalyzeBtn(); return;
   }
 
-  const phrase = PHRASES[parseInt(sel.value)];
-  analysisStatus.textContent = '🎙️ Parlez maintenant — lisez la phrase à voix haute…';
+  analysisStatus.textContent = '🎙️ Parlez maintenant…';
 
   try {
-    const speechConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(azureToken, azureRegion);
+    const speechConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(token, region);
     speechConfig.speechRecognitionLanguage = 'fr-CA';
 
     const paConfig = new SpeechSDK.PronunciationAssessmentConfig(
-      phrase.text,
+      text,
       SpeechSDK.PronunciationAssessmentGradingSystem.HundredMark,
       SpeechSDK.PronunciationAssessmentGranularity.Phoneme,
-      true  // enableMiscue — détecte omissions / insertions
+      true
     );
     paConfig.phonemeAlphabet = 'IPA';
 
-    const audioConfig  = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-    const recognizer   = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+    const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+    const recognizer  = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
     paConfig.applyTo(recognizer);
 
     recognizer.recognizeOnceAsync(result => {
       recognizer.close();
-
       if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
         const paResult = SpeechSDK.PronunciationAssessmentResult.fromResult(result);
-        const jsonRaw  = result.properties.getProperty(
-          SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult
-        );
+        const jsonRaw  = result.properties.getProperty(SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult);
         renderResults(paResult, jsonRaw);
         analysisStatus.textContent = '';
       } else if (result.reason === SpeechSDK.ResultReason.NoMatch) {
         analysisStatus.textContent = '⚠️ Aucune parole détectée — réessayez.';
       } else {
-        analysisStatus.textContent = '❌ Erreur de reconnaissance : ' + SpeechSDK.ResultReason[result.reason];
+        analysisStatus.textContent = '❌ Erreur : ' + SpeechSDK.ResultReason[result.reason];
       }
-
       resetAnalyzeBtn();
-    }, err => {
-      recognizer.close();
-      analysisStatus.textContent = '❌ ' + err;
-      resetAnalyzeBtn();
-    });
+    }, err => { recognizer.close(); analysisStatus.textContent = '❌ ' + err; resetAnalyzeBtn(); });
 
   } catch(e) {
     analysisStatus.textContent = '❌ ' + e.message;
@@ -486,56 +477,52 @@ async function startAnalysis() {
 }
 
 function resetAnalyzeBtn() {
-  const analyzeBtn = document.getElementById('analyzeBtn');
-  analyzeBtn.disabled = false;
-  analyzeBtn.classList.remove('analyzing');
-  analyzeBtn.innerHTML = '<i class="bi bi-waveform me-1"></i> Analyser ma prononciation';
+  const b = document.getElementById('analyzeBtn');
+  b.disabled = false;
+  b.classList.remove('analyzing');
+  b.innerHTML = '<i class="bi bi-waveform me-1"></i> Analyser ma prononciation';
 }
 
-// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 //  Render results
-// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 function scoreColor(s) {
-  if (s >= 80) return { bg: '#d1fae5', text: '#065f46' };
-  if (s >= 60) return { bg: '#fef9c3', text: '#713f12' };
-  if (s >= 40) return { bg: '#ffedd5', text: '#7c2d12' };
-  return { bg: '#fee2e2', text: '#7f1d1d' };
+  if (s >= 80) return { bg:'#d1fae5', text:'#065f46' };
+  if (s >= 60) return { bg:'#fef9c3', text:'#713f12' };
+  if (s >= 40) return { bg:'#ffedd5', text:'#7c2d12' };
+  return              { bg:'#fee2e2', text:'#7f1d1d' };
 }
 
 function renderResults(paResult, jsonRaw) {
   document.getElementById('resultsSection').style.display = 'block';
 
-  // ── Global scores ──
+  // Scores globaux
   const scores = [
-    { val: Math.round(paResult.pronunciationScore), lbl: 'Prononciation' },
-    { val: Math.round(paResult.accuracyScore),      lbl: 'Précision' },
-    { val: Math.round(paResult.fluencyScore),        lbl: 'Fluidité' },
-    { val: Math.round(paResult.completenessScore),   lbl: 'Complétude' },
+    { val: Math.round(paResult.pronunciationScore), lbl:'Prononciation' },
+    { val: Math.round(paResult.accuracyScore),      lbl:'Précision' },
+    { val: Math.round(paResult.fluencyScore),       lbl:'Fluidité' },
+    { val: Math.round(paResult.completenessScore),  lbl:'Complétude' },
   ];
   const scoresRow = document.getElementById('scoresRow');
   scoresRow.innerHTML = '';
   scores.forEach(s => {
-    const c = scoreColor(s.val);
+    const c   = scoreColor(s.val);
     const div = document.createElement('div');
     div.className = 'score-badge';
     div.style.background = c.bg;
-    div.innerHTML = `<span class="score-val" style="color:${c.text};">${s.val}</span><span class="score-lbl">${s.lbl}</span>`;
+    div.innerHTML = `<span class="score-val" style="color:${c.text}">${s.val}</span><span class="score-lbl">${s.lbl}</span>`;
     scoresRow.appendChild(div);
   });
 
-  // ── Word breakdown ──
+  // Mots
   const wordBreakdown = document.getElementById('wordBreakdown');
   wordBreakdown.innerHTML = '';
 
   let parsed = null;
   try { parsed = JSON.parse(jsonRaw); } catch(e) {}
-
   const words = parsed?.NBest?.[0]?.Words ?? [];
 
-  if (words.length === 0) {
-    wordBreakdown.textContent = '(Aucun détail disponible)';
-    return;
-  }
+  if (!words.length) { wordBreakdown.textContent = '(Aucun détail disponible)'; return; }
 
   words.forEach(w => {
     const pa    = w.PronunciationAssessment ?? {};
@@ -543,19 +530,16 @@ function renderResults(paResult, jsonRaw) {
     const err   = pa.ErrorType ?? 'None';
     const c     = scoreColor(score);
 
-    const chip = document.createElement('span');
+    const chip  = document.createElement('span');
     chip.className = 'word-chip';
-    if (err === 'Omission')   chip.classList.add('omission');
-    if (err === 'Insertion')  chip.classList.add('insertion');
+    if (err === 'Omission')  chip.classList.add('omission');
+    if (err === 'Insertion') chip.classList.add('insertion');
     chip.style.background = c.bg;
     chip.style.color      = c.text;
+    chip.innerHTML = `${w.Word}<sup style="font-size:.6rem;opacity:.65;margin-left:2px;">${Math.round(score)}</sup>`;
 
-    // Word label + score
-    chip.innerHTML = `${w.Word}<sup style="font-size:.6rem;opacity:.7;margin-left:2px;">${Math.round(score)}</sup>`;
-
-    // Phonemes (shown on click)
     const phonemes = w.Phonemes ?? [];
-    if (phonemes.length > 0) {
+    if (phonemes.length) {
       const pRow = document.createElement('div');
       pRow.className = 'phoneme-row';
       phonemes.forEach(ph => {
@@ -570,14 +554,10 @@ function renderResults(paResult, jsonRaw) {
         pRow.appendChild(dot);
       });
       chip.appendChild(pRow);
-
       chip.addEventListener('click', () => {
         chip.classList.toggle('open');
-        if (chip.classList.contains('open')) {
-          chip.querySelector('.phoneme-row').style.display = 'flex';
-        } else {
-          chip.querySelector('.phoneme-row').style.display = 'none';
-        }
+        chip.querySelector('.phoneme-row').style.display =
+          chip.classList.contains('open') ? 'flex' : 'none';
       });
     }
 
@@ -588,9 +568,7 @@ function renderResults(paResult, jsonRaw) {
 
 function clearResults() {
   document.getElementById('resultsSection').style.display = 'none';
-  document.getElementById('analysisStatus').textContent = '';
-  document.getElementById('scoresRow').innerHTML = '';
-  document.getElementById('wordBreakdown').innerHTML = '';
+  document.getElementById('analysisStatus').textContent   = '';
 }
 </script>
 </body>

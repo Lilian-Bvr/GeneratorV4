@@ -365,6 +365,39 @@ if (preg_match('#^/api/elevenlabs/tts/(.+)$#', $path, $matches) && $method === '
     );
 }
 
+// ── Lab endpoints (standalone, no session auth) ─────────────────────────────
+
+// GET /api/lab/voices — ElevenLabs voice list for the speech-assessment lab
+if ($path === '/api/lab/voices' && $method === 'GET') {
+    if (!defined('ELEVENLABS_API_KEY') || !ELEVENLABS_API_KEY) {
+        jsonResponse(['error' => 'ElevenLabs non configuré'], 503);
+    }
+    proxyRequest(
+        'https://api.elevenlabs.io/v2/voices?page_size=100&voice_type=default',
+        'GET',
+        ['xi-api-key' => ELEVENLABS_API_KEY]
+    );
+}
+
+// POST /api/lab/tts/{voiceId} — ElevenLabs TTS for the speech-assessment lab
+if (preg_match('#^/api/lab/tts/(.+)$#', $path, $matches) && $method === 'POST') {
+    if (!defined('ELEVENLABS_API_KEY') || !ELEVENLABS_API_KEY) {
+        jsonResponse(['error' => 'ElevenLabs non configuré'], 503);
+    }
+    $voiceId = $matches[1];
+    $body = file_get_contents('php://input');
+    proxyRequest(
+        "https://api.elevenlabs.io/v1/text-to-speech/$voiceId",
+        'POST',
+        [
+            'Accept'       => 'audio/mpeg',
+            'Content-Type' => 'application/json',
+            'xi-api-key'   => ELEVENLABS_API_KEY,
+        ],
+        $body
+    );
+}
+
 // ── Azure Speech Assessment token (no app auth — page standalone) ──────────
 if ($path === '/api/azure/speech-token' && $method === 'GET') {
     $key    = defined('AZURE_SPEECH_KEY')    ? AZURE_SPEECH_KEY    : '';
