@@ -438,27 +438,42 @@ if ($path === '/api/lab/feedback' && $method === 'POST') {
 
     if (!$phrase) jsonResponse(['error' => 'Phrase manquante'], 400);
 
-    $wordLines = implode("\n", array_map(fn($w) =>
-        "• \"{$w['word']}\" : {$w['score']}/100" .
-        ($w['error'] !== 'None' ? " [{$w['error']}]" : ''),
-        $words
-    ));
+    // Construire le détail par mot avec position syllabique
+    $wordLines = implode("\n", array_map(function($w) {
+        $line = "• \"{$w['word']}\" : {$w['score']}/100";
+        if (!empty($w['syllables'])) {
+            $total = count($w['syllables']);
+            $positions = ['début','milieu','fin'];
+            $problems = [];
+            foreach ($w['syllables'] as $i => $s) {
+                if ($s < 75) {
+                    $pos = $total === 1 ? 'tout le mot' :
+                           ($i === 0 ? 'début' : ($i === $total - 1 ? 'fin' : 'milieu'));
+                    $problems[] = "{$pos} ({$s}/100)";
+                }
+            }
+            if ($problems) $line .= ' — difficile : ' . implode(', ', $problems);
+        }
+        if (isset($w['error']) && $w['error'] !== 'None') $line .= " [{$w['error']}]";
+        return $line;
+    }, $words));
 
     $prompt = <<<PROMPT
-Tu es un professeur de prononciation en français canadien.
+Tu es un assistant de prononciation pour des apprenants du français canadien.
 
-Phrase évaluée : « {$phrase} »
-Score global (PronScore) : {$sc['pron']}/100
-Précision phonémique : {$sc['accuracy']}/100
-Fluidité : {$sc['fluency']}/100
+Phrase : « {$phrase} »
+Score global : {$sc['pron']}/100
 
-Résultats par mot :
+Résultats :
 {$wordLines}
 
-Rédige un feedback de 2 à 3 phrases courtes en français, à destination de l'apprenant.
-- Si un mot a un score < 75, mentionne-le et explique brièvement comment l'améliorer.
-- Si tous les scores sont ≥ 85, félicite chaleureusement et propose un défi concret.
-- Reste encourageant, précis, sans jargon phonétique technique.
+Règles STRICTES à suivre :
+1. Maximum 2 phrases très courtes, en français simple (niveau A1-B1).
+2. Mentionne SEULEMENT les mots avec un score < 80. Si aucun, félicite en une phrase et termine.
+3. Pour chaque mot difficile : indique la position (début/milieu/fin) si elle est fournie.
+4. N'invente JAMAIS quelle lettre ou quel son est incorrect — tu ne disposes pas de cette information.
+5. Suggère seulement de pratiquer le mot lentement, syllabe par syllabe.
+6. Pas de jargon phonétique (pas d'IPA, pas de "fricative", "occlusive", etc.).
 PROMPT;
 
     $body = json_encode([

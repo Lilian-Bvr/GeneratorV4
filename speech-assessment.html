@@ -126,23 +126,22 @@
       </h6>
       <div id="wordBreakdown" style="line-height:2.6;"></div>
 
-      <div class="d-flex gap-3 mt-3 flex-wrap" style="font-size:.74rem;color:#9ca3af;">
+      <div class="d-flex gap-2 flex-wrap align-items-center" style="font-size:.74rem;color:#9ca3af;">
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#d1fae5;"></span> ≥ 80</span>
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#fef9c3;"></span> 60–79</span>
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#ffedd5;"></span> 40–59</span>
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#fee2e2;"></span> &lt; 40</span>
-        <span class="ms-2"><i class="bi bi-mic" style="font-size:.8rem;"></i> = votre prononciation &nbsp;
-               <i class="bi bi-volume-up" style="font-size:.8rem;"></i> = référence ElevenLabs</span>
+        <span style="margin-left:.4rem;"><i class="bi bi-mic"></i> votre mot · <i class="bi bi-volume-up"></i> référence</span>
       </div>
 
-      <!-- Feedback IA -->
+      <!-- Feedback IA (généré automatiquement) -->
       <div id="feedbackBox" class="mt-4" style="display:none;">
         <div id="feedbackText" class="p-3 rounded" style="background:#eff6ff;border-left:3px solid #3b82f6;font-size:.92rem;color:#1e3a5f;line-height:1.6;"></div>
-      </div>
-      <div class="mt-3">
-        <button id="feedbackBtn" class="btn btn-sm btn-outline-primary" onclick="generateFeedback()">
-          <i class="bi bi-stars me-1"></i> Générer un feedback IA
-        </button>
+        <div class="mt-2 text-end">
+          <button id="feedbackBtn" class="btn btn-sm btn-link text-secondary p-0" style="font-size:.75rem;" onclick="generateFeedback()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Régénérer
+          </button>
+        </div>
       </div>
 
       <!-- Réponse brute Azure -->
@@ -560,7 +559,8 @@ let lastScores = {};
 let currentWords = [];
 
 function renderResults(paResult, jsonRaw) {
-  document.getElementById('resultsSection').style.display = 'block';
+  // On n'affiche rien encore — tout apparaîtra en même temps que le feedback
+  document.getElementById('resultsSection').style.display = 'none';
   document.getElementById('feedbackBox').style.display = 'none';
   document.getElementById('feedbackText').textContent = '';
 
@@ -579,27 +579,32 @@ function renderResults(paResult, jsonRaw) {
     fluency:  Math.round(paResult.fluencyScore),
   };
 
-  // Scores globaux
+  // Scores principaux (les deux métriques utiles pour des phrases courtes)
   const scores = [
-    { val: lastScores.pron,     lbl:'Prononciation', tip:'Score global = 60% précision + 20% fluidité + 20% complétude' },
-    { val: lastScores.accuracy, lbl:'Précision',     tip:'Correspondance phonémique par rapport à un locuteur natif' },
-    { val: Math.round(paResult.fluencyScore),      lbl:'Fluidité',    tip:'Naturel des pauses entre les mots (100 = aucune pause anormale)' },
-    { val: Math.round(paResult.completenessScore), lbl:'Complétude',  tip:'Ratio de mots prononcés vs texte de référence (100 = aucune omission)' },
+    { val: lastScores.pron,     lbl:'Prononciation', tip:'Score global (= 60 % précision + 20 % fluidité + 20 % complétude)' },
+    { val: lastScores.accuracy, lbl:'Précision',      tip:'Correspondance phonémique avec un locuteur natif, mot par mot' },
   ];
   const scoresRow = document.getElementById('scoresRow');
   scoresRow.innerHTML = '';
-  scores.forEach((s, i) => {
+  scores.forEach(s => {
     const c = scoreColor(s.val);
     const d = document.createElement('div');
-    d.className = 'score-badge';
-    // Fluidité et Complétude en plus petit si 100 (peu informatif sur phrase courte)
-    if (i >= 2 && s.val === 100) d.style.opacity = '.55';
-    d.style.background = c.bg;
-    d.title = s.tip;
-    d.style.cursor = 'help';
+    d.className = 'score-badge'; d.style.background = c.bg; d.title = s.tip; d.style.cursor = 'help';
     d.innerHTML = `<span class="sv" style="color:${c.text}">${s.val}</span><span class="sl">${s.lbl}</span>`;
     scoresRow.appendChild(d);
   });
+
+  // Fluidité / Complétude : mention textuelle seulement si pas 100
+  const fluency     = Math.round(paResult.fluencyScore);
+  const completeness = Math.round(paResult.completenessScore);
+  const secondaryNote = document.createElement('div');
+  secondaryNote.style.cssText = 'font-size:.75rem;color:#9ca3af;margin-top:.5rem;width:100%;';
+  const notes = [];
+  if (fluency < 100)     notes.push(`Fluidité : ${fluency}/100 — pauses inhabituelles détectées`);
+  if (completeness < 100) notes.push(`Complétude : ${completeness}/100 — certains mots n'ont pas été prononcés`);
+  if (notes.length === 0) notes.push('Fluidité et complétude : 100/100 (tous les mots prononcés, aucune pause anormale)');
+  secondaryNote.textContent = notes.join(' · ');
+  scoresRow.appendChild(secondaryNote);
 
   // Mots
   currentWords = [];
@@ -656,9 +661,13 @@ function renderResults(paResult, jsonRaw) {
     wb.appendChild(chip);
     wb.appendChild(document.createTextNode(' '));
 
-    // Stocker pour feedback IA
-    currentWords.push({ word: w.Word, score: Math.round(score), error: err });
+    // Stocker pour feedback IA (avec position syllabique)
+    const sylScores = (w.Syllables || []).map(s => Math.round(s.PronunciationAssessment?.AccuracyScore ?? 0));
+    currentWords.push({ word: w.Word, score: Math.round(score), error: err, syllables: sylScores });
   });
+
+  // Lancer le feedback IA automatiquement
+  generateFeedback();
 }
 
 async function generateFeedback() {
@@ -668,8 +677,8 @@ async function generateFeedback() {
   const txt  = document.getElementById('feedbackText');
 
   btn.disabled = true;
-  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Génération…';
-  box.style.display = 'none';
+  txt.innerHTML = '<span class="text-muted" style="font-size:.85rem;"><i class="bi bi-hourglass-split me-1"></i> Analyse en cours…</span>';
+  box.style.display = 'block';
 
   try {
     const res = await fetch(`${BASE}/api/lab/feedback`, {
@@ -679,13 +688,13 @@ async function generateFeedback() {
     if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `HTTP ${res.status}`); }
     const data = await res.json();
     txt.textContent = data.feedback;
-    box.style.display = 'block';
   } catch(e) {
     txt.textContent = '❌ ' + e.message;
-    box.style.display = 'block';
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-stars me-1"></i> Régénérer le feedback';
+    // Tout révéler en même temps : scores + mots + feedback
+    document.getElementById('resultsSection').style.display = 'block';
+    box.style.display = 'block';
   }
 }
 
@@ -696,7 +705,7 @@ function clearResults() {
   document.getElementById('rawJsonBox').textContent = '';
   document.getElementById('feedbackBox').style.display = 'none';
   document.getElementById('feedbackText').textContent = '';
-  document.getElementById('feedbackBtn').innerHTML = '<i class="bi bi-stars me-1"></i> Générer un feedback IA';
+  document.getElementById('feedbackBtn').innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Régénérer';
   currentWords = []; lastScores = {};
 }
 </script>
