@@ -456,25 +456,17 @@ if ($path === '/api/lab/feedback' && $method === 'POST') {
     }, $badWords));
 
     $prompt = <<<PROMPT
-Tu es un expert en phonétique du français canadien et professeur de FLE.
+Tu es professeur de français canadien. Un apprenant a prononcé : « {$phrase} »
 
-Phrase prononcée par l'apprenant : « {$phrase} »
-
-Mots qui posent problème (score < 80) :
+Mots difficiles :
 {$wordLines}
 
-Tu connais la phrase complète, donc tu peux raisonner sur quels sons se trouvent exactement à la position difficile dans chaque mot.
-
-Pour chaque mot difficile :
-1. Identifie quel son est probablement en cause à cette position dans ce mot en français canadien (raisonne à partir de ta connaissance de la phonétique française).
-2. Compare ce son avec un mot du quotidien très courant qui contient le même son (ex : "café", "rue", "eau", "non", "tu").
-3. Donne un conseil pratique ultra-concret lié à ce son spécifique.
-
-Contraintes absolues :
-- 2 à 3 phrases maximum, en français accessible (niveau A2-B1).
-- Pas de transcription IPA, pas de termes techniques ("fricative", "occlusive", etc.).
-- Sois spécifique au mot et à la position — aucun conseil générique du type "pratiquez syllabe par syllabe".
-- Ne mentionne pas les scores numériques.
+RÈGLES STRICTES — respecte-les toutes :
+1. Nomme la partie du mot difficile en utilisant uniquement les LETTRES du mot (ex : "le -tières de tourtières", "le sp- de spécialités"). Jamais de phonème inventé.
+2. N'identifie JAMAIS quel son précis est en cause — tu ne le sais pas et tu te tromperais.
+3. Dis à l'apprenant d'écouter la référence audio du mot et de répéter en imitant — c'est le seul conseil fiable.
+4. Texte SANS markdown : pas d'astérisques, pas de dièses, pas de tirets horizontaux, pas de symboles.
+5. Maximum 1-2 phrases par mot difficile. Niveau A2-B1. Ne mentionne pas les scores.
 PROMPT;
 
     $body = json_encode([

@@ -702,7 +702,15 @@ async function generateFeedback() {
       })
     });
     if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `HTTP ${res.status}`); }
-    txt.textContent = (await res.json()).feedback;
+    const raw = (await res.json()).feedback || '';
+    // Nettoyer le markdown résiduel si le modèle ignore l'instruction
+    txt.textContent = raw
+      .replace(/^#{1,3}\s*/gm, '')          // ## titres
+      .replace(/\*\*(.+?)\*\*/g, '$1')       // **gras**
+      .replace(/\*(.+?)\*/g, '$1')           // *italique*
+      .replace(/^---+$/gm, '')               // --- séparateurs
+      .replace(/^\s*[-•]\s+/gm, '• ')        // tirets → puces propres
+      .trim();
   } catch(e) {
     txt.textContent = '❌ ' + e.message;
   } finally {
