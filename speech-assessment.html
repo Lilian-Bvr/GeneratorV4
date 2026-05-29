@@ -135,6 +135,16 @@
                <i class="bi bi-volume-up" style="font-size:.8rem;"></i> = référence ElevenLabs</span>
       </div>
 
+      <!-- Feedback IA -->
+      <div id="feedbackBox" class="mt-4" style="display:none;">
+        <div id="feedbackText" class="p-3 rounded" style="background:#eff6ff;border-left:3px solid #3b82f6;font-size:.92rem;color:#1e3a5f;line-height:1.6;"></div>
+      </div>
+      <div class="mt-3">
+        <button id="feedbackBtn" class="btn btn-sm btn-outline-primary" onclick="generateFeedback()">
+          <i class="bi bi-stars me-1"></i> Générer un feedback IA
+        </button>
+      </div>
+
       <!-- Réponse brute Azure -->
       <div class="mt-3">
         <button class="btn btn-sm btn-outline-secondary" type="button"
@@ -289,13 +299,14 @@ async function listenElevenLabs() {
 }
 
 // Convertit les timestamps caractère → [{word, startSec, endSec}]
+// Le trait d'union est traité comme séparateur pour gérer "allez-vous" → "allez" + "vous"
 function buildWordTimings(chars, starts, ends) {
   const words = [];
-  let wStart = null, wIdx = 0, wText = '';
+  let wIdx = 0, wText = '';
   for (let i = 0; i < chars.length; i++) {
     const c = chars[i];
-    if (/[\s,;:!?.«»"'()]/.test(c)) {
-      if (wText) { words.push({ word: wText.toLowerCase(), startSec: starts[wIdx], endSec: ends[i - 1] }); wText = ''; wStart = null; }
+    if (/[\s,;:!?.«»"'()\-]/.test(c)) {
+      if (wText) { words.push({ word: wText.toLowerCase(), startSec: starts[wIdx], endSec: ends[i - 1] }); wText = ''; }
     } else {
       if (!wText) wIdx = i;
       wText += c;
@@ -309,15 +320,22 @@ function buildWordTimings(chars, starts, ends) {
 function playElevenLabsWord(wordText) {
   if (!elevenLabsAudioBuffer || !elevenLabsWordTimings) { fallbackWebSpeech(wordText); return; }
 
-  // Les mots composés (allez-vous) sont splitttés côté ElevenLabs → on cherche chaque partie
-  const parts = wordText.toLowerCase().replace(/[,.'!?;:]/g, '').split(/[-\s]+/).filter(Boolean);
+  const normalized = wordText.toLowerCase().replace(/[,.'!?;:]/g, '');
+
+  // 1. Essai exact (mot simple)
+  const exact = elevenLabsWordTimings.find(w => w.word === normalized);
+  if (exact) { playAudioSlice(elevenLabsAudioBuffer, exact.startSec - 0.04, exact.endSec + 0.05); return; }
+
+  // 2. Mot composé (allez-vous → "allez" + "vous") : on recombine les tranches
+  const parts = normalized.split(/[-\s]+/).filter(Boolean);
   let startSec = null, endSec = null;
   for (const part of parts) {
     const t = elevenLabsWordTimings.find(w => w.word === part);
     if (t) { if (startSec === null) startSec = t.startSec; endSec = t.endSec; }
   }
-  if (startSec === null) { fallbackWebSpeech(wordText); return; }
-  playAudioSlice(elevenLabsAudioBuffer, startSec - 0.05, endSec + 0.1);
+  if (startSec !== null) { playAudioSlice(elevenLabsAudioBuffer, startSec - 0.04, endSec + 0.05); return; }
+
+  fallbackWebSpeech(wordText);
 }
 
 function fallbackWebSpeech(word) {
@@ -537,8 +555,14 @@ function scoreColor(s) {
   return              { bg:'#fee2e2', text:'#7f1d1d' };
 }
 
+// État pour le feedback IA
+let lastScores = {};
+let currentWords = [];
+
 function renderResults(paResult, jsonRaw) {
   document.getElementById('resultsSection').style.display = 'block';
+  document.getElementById('feedbackBox').style.display = 'none';
+  document.getElementById('feedbackText').textContent = '';
 
   // Réponse brute
   try {
@@ -548,24 +572,37 @@ function renderResults(paResult, jsonRaw) {
     document.getElementById('rawJsonBox').textContent = jsonRaw || '(vide)';
   }
 
+  // Stocker les scores pour le feedback
+  lastScores = {
+    pron:     Math.round(paResult.pronunciationScore),
+    accuracy: Math.round(paResult.accuracyScore),
+    fluency:  Math.round(paResult.fluencyScore),
+  };
+
   // Scores globaux
   const scores = [
-    { val:Math.round(paResult.pronunciationScore), lbl:'Prononciation' },
-    { val:Math.round(paResult.accuracyScore),       lbl:'Précision' },
-    { val:Math.round(paResult.fluencyScore),        lbl:'Fluidité' },
-    { val:Math.round(paResult.completenessScore),   lbl:'Complétude' },
+    { val: lastScores.pron,     lbl:'Prononciation', tip:'Score global = 60% précision + 20% fluidité + 20% complétude' },
+    { val: lastScores.accuracy, lbl:'Précision',     tip:'Correspondance phonémique par rapport à un locuteur natif' },
+    { val: Math.round(paResult.fluencyScore),      lbl:'Fluidité',    tip:'Naturel des pauses entre les mots (100 = aucune pause anormale)' },
+    { val: Math.round(paResult.completenessScore), lbl:'Complétude',  tip:'Ratio de mots prononcés vs texte de référence (100 = aucune omission)' },
   ];
   const scoresRow = document.getElementById('scoresRow');
   scoresRow.innerHTML = '';
-  scores.forEach(s => {
+  scores.forEach((s, i) => {
     const c = scoreColor(s.val);
     const d = document.createElement('div');
-    d.className = 'score-badge'; d.style.background = c.bg;
+    d.className = 'score-badge';
+    // Fluidité et Complétude en plus petit si 100 (peu informatif sur phrase courte)
+    if (i >= 2 && s.val === 100) d.style.opacity = '.55';
+    d.style.background = c.bg;
+    d.title = s.tip;
+    d.style.cursor = 'help';
     d.innerHTML = `<span class="sv" style="color:${c.text}">${s.val}</span><span class="sl">${s.lbl}</span>`;
     scoresRow.appendChild(d);
   });
 
-  // Mots + phonèmes
+  // Mots
+  currentWords = [];
   const wb = document.getElementById('wordBreakdown');
   wb.innerHTML = '';
 
@@ -618,7 +655,38 @@ function renderResults(paResult, jsonRaw) {
     chip.appendChild(btns);
     wb.appendChild(chip);
     wb.appendChild(document.createTextNode(' '));
+
+    // Stocker pour feedback IA
+    currentWords.push({ word: w.Word, score: Math.round(score), error: err });
   });
+}
+
+async function generateFeedback() {
+  const text = document.getElementById('phraseInput').value.trim();
+  const btn  = document.getElementById('feedbackBtn');
+  const box  = document.getElementById('feedbackBox');
+  const txt  = document.getElementById('feedbackText');
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Génération…';
+  box.style.display = 'none';
+
+  try {
+    const res = await fetch(`${BASE}/api/lab/feedback`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phrase: text, scores: lastScores, words: currentWords })
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `HTTP ${res.status}`); }
+    const data = await res.json();
+    txt.textContent = data.feedback;
+    box.style.display = 'block';
+  } catch(e) {
+    txt.textContent = '❌ ' + e.message;
+    box.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-stars me-1"></i> Régénérer le feedback';
+  }
 }
 
 function clearResults() {
@@ -626,6 +694,10 @@ function clearResults() {
   document.getElementById('analysisStatus').textContent = '';
   document.getElementById('rawJsonBox').style.display = 'none';
   document.getElementById('rawJsonBox').textContent = '';
+  document.getElementById('feedbackBox').style.display = 'none';
+  document.getElementById('feedbackText').textContent = '';
+  document.getElementById('feedbackBtn').innerHTML = '<i class="bi bi-stars me-1"></i> Générer un feedback IA';
+  currentWords = []; lastScores = {};
 }
 </script>
 </body>

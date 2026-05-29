@@ -426,6 +426,66 @@ if (preg_match('#^/api/lab/tts-timestamps/(.+)$#', $path, $matches) && $method =
     exit;
 }
 
+// POST /api/lab/feedback — génère un feedback IA via Anthropic (Haiku)
+if ($path === '/api/lab/feedback' && $method === 'POST') {
+    if (!defined('ANTHROPIC_API_KEY') || !ANTHROPIC_API_KEY) {
+        jsonResponse(['error' => 'Clé Anthropic non configurée'], 503);
+    }
+    $input  = json_decode(file_get_contents('php://input'), true);
+    $phrase = trim($input['phrase'] ?? '');
+    $sc     = $input['scores'] ?? [];
+    $words  = $input['words']  ?? [];
+
+    if (!$phrase) jsonResponse(['error' => 'Phrase manquante'], 400);
+
+    $wordLines = implode("\n", array_map(fn($w) =>
+        "• \"{$w['word']}\" : {$w['score']}/100" .
+        ($w['error'] !== 'None' ? " [{$w['error']}]" : ''),
+        $words
+    ));
+
+    $prompt = <<<PROMPT
+Tu es un professeur de prononciation en français canadien.
+
+Phrase évaluée : « {$phrase} »
+Score global (PronScore) : {$sc['pron']}/100
+Précision phonémique : {$sc['accuracy']}/100
+Fluidité : {$sc['fluency']}/100
+
+Résultats par mot :
+{$wordLines}
+
+Rédige un feedback de 2 à 3 phrases courtes en français, à destination de l'apprenant.
+- Si un mot a un score < 75, mentionne-le et explique brièvement comment l'améliorer.
+- Si tous les scores sont ≥ 85, félicite chaleureusement et propose un défi concret.
+- Reste encourageant, précis, sans jargon phonétique technique.
+PROMPT;
+
+    $body = json_encode([
+        'model'      => 'claude-haiku-4-5-20251001',
+        'max_tokens' => 300,
+        'messages'   => [['role' => 'user', 'content' => $prompt]],
+    ]);
+
+    $ch = curl_init('https://api.anthropic.com/v1/messages');
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'x-api-key: ' . ANTHROPIC_API_KEY,
+        'anthropic-version: 2023-06-01',
+    ]);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    $resp     = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode !== 200) jsonResponse(['error' => "Erreur Anthropic (HTTP $httpCode)"], 502);
+    $data = json_decode($resp, true);
+    jsonResponse(['feedback' => $data['content'][0]['text'] ?? '']);
+}
+
 // ── Azure Speech Assessment token (no app auth — page standalone) ──────────
 if ($path === '/api/azure/speech-token' && $method === 'GET') {
     $key    = defined('AZURE_SPEECH_KEY')    ? AZURE_SPEECH_KEY    : '';
