@@ -222,19 +222,6 @@ const voiceSelect = document.getElementById('voiceSelect');
   }
 })();
 
-// ── Préprocesseur de liaisons fr-CA ──────────────────────────
-// Utilisé UNIQUEMENT pour ElevenLabs. Le texte affiché et envoyé à Azure reste intact.
-function addFrenchLiaisons(text) {
-  const V = 'aeiouàâéèêëîïôùûüæœhH';
-  const rv = `[${V}]`;
-  const liaisonsZ = 'les|mes|ses|des|ces|tes|nos|vos|aux|nous|vous|ils|elles|très|plus|assez|trop|deux|trois|six|dix';
-  const liaisonsT = 'est|sont|ont|comment|quand|dont|tout|fort|grand|petit|vient|tient';
-  const liaisonsN = 'on|en|un|mon|ton|son|bon|bien|rien|aucun';
-  return text
-    .replace(new RegExp(`\\b(${liaisonsZ})\\s+(${rv})`, 'gi'), '$1-z-$2')
-    .replace(new RegExp(`\\b(${liaisonsT})\\s+(${rv})`, 'gi'), '$1-t-$2')
-    .replace(new RegExp(`\\b(${liaisonsN})\\s+(${rv})`, 'gi'), '$1-n-$2');
-}
 
 async function listenElevenLabs() {
   const text    = document.getElementById('phraseInput').value.trim();
@@ -248,7 +235,7 @@ async function listenElevenLabs() {
   try {
     const res = await fetch(`${BASE}/api/lab/tts/${voiceId}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: addFrenchLiaisons(text), model_id: 'eleven_multilingual_v2', voice_settings: { stability: .35, similarity_boost: .82 } })
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: .35, similarity_boost: .82 } })
     });
     if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `HTTP ${res.status}`); }
     refAudio.src = URL.createObjectURL(await res.blob());
