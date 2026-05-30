@@ -71,15 +71,9 @@
       placeholder="Écrivez ici la phrase à évaluer…"
       oninput="onPhraseChange()" style="font-size:1.1rem;resize:vertical;"></textarea>
 
-    <input id="ipaInput" class="form-control form-control-sm mb-3"
-      placeholder="Transcription phonétique IPA (optionnel)"
-      oninput="document.getElementById('ipaDisplay').textContent=this.value"
-      style="font-style:italic;color:#6b7280;">
-
     <!-- Display -->
     <div class="p-3 rounded" style="background:#f8f9fa;min-height:56px;">
       <div id="phraseDisplay" style="font-size:1.5rem;font-weight:600;color:#1a1a2e;line-height:1.45;"></div>
-      <div id="ipaDisplay" style="font-size:.98rem;color:#6b7280;font-style:italic;margin-top:.2rem;letter-spacing:.04em;"></div>
     </div>
 
     <!-- TTS reference -->
@@ -160,13 +154,13 @@ const BASE = window.location.origin + window.location.pathname.replace(/\/[^/]*$
 //  Presets
 // ══════════════════════════════════════════════════════════
 const PRESETS = [
-  { label:"Bonjour (Facile)",        text:"Bonjour, comment allez-vous ?",                                    ipa:"/bɔ̃.ʒuʁ/ — /kɔ.mɑ̃/ — /a.le.vu/" },
-  { label:"Café (Facile)",           text:"Je voudrais un café, s'il vous plaît.",                            ipa:"/ʒə.vu.dʁɛ/ — /œ̃.ka.fe/ — /sil.vu.plɛ/" },
-  { label:"Météo (Facile)",          text:"Il fait très beau aujourd'hui.",                                   ipa:"/il.fɛ.tʁɛ.bo/ — /o.ʒuʁ.dɥi/" },
-  { label:"Présentation (Moyen)",    text:"Je m'appelle Marie et j'habite à Montréal.",                       ipa:"/ʒə.ma.pɛl.ma.ʁi/ — /e.ʒa.bit/ — /a.mɔ̃.ʁe.al/" },
-  { label:"Direction (Moyen)",       text:"Pourriez-vous m'indiquer le chemin pour la bibliothèque ?",        ipa:"/pu.ʁje.vu/ — /mɛ̃.di.ke/ — /lə.ʃə.mɛ̃/ — /puʁ.la.bi.bli.o.tɛk/" },
-  { label:"Rendez-vous (Difficile)", text:"J'aimerais prendre rendez-vous avec le médecin, s'il vous plaît.", ipa:"/ʒɛ.mʁɛ.pʁɑ̃dʁ/ — /ʁɑ̃.de.vu/ — /a.vɛk.lə.me.dsɛ̃/ — /sil.vu.plɛ/" },
-  { label:"Tourtière (Difficile)",   text:"Les tourtières et la poutine sont des spécialités québécoises.",   ipa:"/le.tuʁ.tjɛʁ/ — /e.la.pu.tin/ — /sɔ̃.de.spe.sja.li.te/ — /ke.be.kwaz/" },
+  { label:"Bonjour (Facile)",        text:"Bonjour, comment allez-vous ?" },
+  { label:"Café (Facile)",           text:"Je voudrais un café, s'il vous plaît." },
+  { label:"Météo (Facile)",          text:"Il fait très beau aujourd'hui." },
+  { label:"Présentation (Moyen)",    text:"Je m'appelle Marie et j'habite à Montréal." },
+  { label:"Direction (Moyen)",       text:"Pourriez-vous m'indiquer le chemin pour la bibliothèque ?" },
+  { label:"Rendez-vous (Difficile)", text:"J'aimerais prendre rendez-vous avec le médecin, s'il vous plaît." },
+  { label:"Tourtière (Difficile)",   text:"Les tourtières et la poutine sont des spécialités québécoises." },
 ];
 
 const presetSelect = document.getElementById('presetSelect');
@@ -176,11 +170,8 @@ PRESETS.forEach((p, i) => {
 
 function loadPreset() {
   const i = presetSelect.value; if (i === '') return;
-  const p = PRESETS[parseInt(i)];
-  document.getElementById('phraseInput').value = p.text;
-  document.getElementById('ipaInput').value    = p.ipa;
+  document.getElementById('phraseInput').value = PRESETS[parseInt(i)].text;
   onPhraseChange();
-  document.getElementById('ipaDisplay').textContent = p.ipa;
 }
 
 function onPhraseChange() {
