@@ -38,7 +38,7 @@
     .ph-btn:hover { opacity:1; }
 
     /* record / analyze pulse */
-    #recBtn.recording  { background:#dc3545; border-color:#dc3545; color:white; animation:p-red  1.2s infinite; }
+    #recBtn.recording, #reviewRecBtn.recording { background:#dc3545; border-color:#dc3545; color:white; animation:p-red 1.2s infinite; }
     #analyzeBtn.analyzing { animation:p-blue 1.2s infinite; }
     @keyframes p-red  { 0%,100%{box-shadow:0 0 0 0 rgba(220,53,69,.4)}  50%{box-shadow:0 0 0 10px rgba(220,53,69,0)} }
     @keyframes p-blue { 0%,100%{box-shadow:0 0 0 0 rgba(13,110,253,.4)} 50%{box-shadow:0 0 0 10px rgba(13,110,253,0)} }
@@ -128,6 +128,14 @@
         <span style="margin-left:.4rem;"><i class="bi bi-mic"></i> votre mot · <i class="bi bi-volume-up"></i> référence</span>
       </div>
 
+      <!-- Bouton révision -->
+      <div id="reviewEntry" style="display:none;" class="mt-4">
+        <button class="btn btn-primary" onclick="startReview()">
+          <i class="bi bi-arrow-repeat me-1"></i> Réviser
+          <span id="reviewWordCount"></span>
+        </button>
+      </div>
+
       <!-- Réponse brute Azure -->
       <div class="mt-3">
         <button class="btn btn-sm btn-outline-secondary" type="button"
@@ -141,6 +149,53 @@
     </div>
 
     <div id="analysisStatus" class="text-muted small mt-2"></div>
+  </div>
+
+  <!-- ── Mode révision ── -->
+  <div id="reviewPanel" class="lab-card" style="display:none;">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h6 class="fw-semibold mb-0" style="color:#374151;">Entraînement</h6>
+      <span id="reviewProgressText" class="text-muted small"></span>
+    </div>
+
+    <!-- Mot en grand -->
+    <div id="reviewWordDisplay"
+      style="font-size:2.4rem;font-weight:700;color:#1a1a2e;text-align:center;padding:1.2rem 0;letter-spacing:.02em;">
+    </div>
+
+    <!-- Indicateurs de tentatives -->
+    <div id="reviewAttemptDots" class="d-flex justify-content-center gap-2 mb-3"></div>
+
+    <!-- Référence + enregistrement -->
+    <div class="d-flex justify-content-center align-items-center gap-3 flex-wrap mb-3">
+      <button class="btn btn-outline-secondary" onclick="playReviewReference()" id="reviewRefBtn">
+        <i class="bi bi-volume-up me-1"></i> Référence
+      </button>
+      <button id="reviewRecBtn" class="btn btn-outline-danger" onclick="toggleReviewRecording()">
+        <i class="bi bi-record-circle me-1"></i> Prononcer
+      </button>
+      <button id="reviewAnalyzeBtn" class="btn btn-primary" onclick="analyzeReviewAttempt()" style="display:none;">
+        <i class="bi bi-waveform me-1"></i> Analyser
+      </button>
+    </div>
+
+    <!-- Playback enregistrement -->
+    <div id="reviewPlayback" style="display:none;" class="mb-3">
+      <audio id="reviewAudio" controls style="width:100%;height:36px;"></audio>
+    </div>
+
+    <!-- Score tentative -->
+    <div id="reviewResult" class="d-flex justify-content-center mb-3" style="display:none !important;"></div>
+
+    <!-- Statut -->
+    <div id="reviewStatus" class="text-center text-muted small mb-2"></div>
+
+    <!-- Bouton suivant -->
+    <div class="text-center">
+      <button id="reviewNextBtn" class="btn btn-primary" onclick="nextReviewWord()" style="display:none;"></button>
+    </div>
   </div>
 
 </div>
@@ -556,17 +611,281 @@ function renderResults(paResult, jsonRaw) {
     chip.appendChild(btns);
     wb.appendChild(chip);
     wb.appendChild(document.createTextNode(' '));
-
   });
 
+  // Initialiser le mode révision
+  initReview(words.map(w => ({
+    word:  w.Word,
+    score: Math.round(w.PronunciationAssessment?.AccuracyScore ?? 0)
+  })));
+}
+
+// ════════════════════════════════════════════════════════
+//  Mode révision
+// ════════════════════════════════════════════════════════
+const REVIEW_PASS = 80;
+const REVIEW_MAX  = 3;
+
+let reviewWords   = [];   // [{word}]
+let reviewIdx     = 0;
+let reviewResults = [];   // [{word, scores:[], passed:bool}]
+
+// Enregistrement review (état séparé du main)
+let rvRecorder = null, rvChunks = [], rvBlob = null, rvMicStream = null;
+
+function initReview(words) {
+  reviewWords = words.filter(w => w.score < REVIEW_PASS);
+  const entry = document.getElementById('reviewEntry');
+  if (reviewWords.length > 0) {
+    const n = reviewWords.length;
+    document.getElementById('reviewWordCount').textContent =
+      `${n} mot${n > 1 ? 's' : ''} difficile${n > 1 ? 's' : ''}`;
+    entry.style.display = 'block';
+  } else {
+    entry.style.display = 'none';
+  }
+}
+
+function startReview() {
+  reviewIdx = 0; reviewResults = [];
+  document.getElementById('reviewPanel').style.display = 'block';
+  document.getElementById('reviewPanel').scrollIntoView({ behavior:'smooth', block:'start' });
+  showReviewWord();
+}
+
+function showReviewWord() {
+  const w = reviewWords[reviewIdx];
+  reviewResults.push({ word: w.word, scores: [], passed: false });
+
+  document.getElementById('reviewProgressText').textContent =
+    `Mot ${reviewIdx + 1} / ${reviewWords.length}`;
+  document.getElementById('reviewWordDisplay').textContent = w.word;
+  document.getElementById('reviewAttemptDots').innerHTML = '';
+  renderReviewDots([]);
+
+  // Reset controls
+  rvBlob = null;
+  document.getElementById('reviewPlayback').style.display = 'none';
+  document.getElementById('reviewAnalyzeBtn').style.display = 'none';
+  document.getElementById('reviewResult').style.display = 'none';
+  document.getElementById('reviewNextBtn').style.display = 'none';
+  document.getElementById('reviewStatus').textContent = '';
+  const recBtn = document.getElementById('reviewRecBtn');
+  recBtn.disabled = false;
+  recBtn.classList.remove('recording');
+  recBtn.innerHTML = '<i class="bi bi-record-circle me-1"></i> Prononcer';
+
+  // Lecture auto de la référence
+  setTimeout(() => playReviewReference(), 600);
+}
+
+function renderReviewDots(scores) {
+  const container = document.getElementById('reviewAttemptDots');
+  container.innerHTML = '';
+  for (let i = 0; i < REVIEW_MAX; i++) {
+    const dot = document.createElement('span');
+    dot.style.cssText = 'width:14px;height:14px;border-radius:50%;display:inline-block;transition:background .3s;';
+    if (i < scores.length) {
+      const s = scores[i];
+      dot.style.background = s >= REVIEW_PASS ? '#22c55e' : s >= 60 ? '#f97316' : '#ef4444';
+      dot.title = `Tentative ${i+1} : ${s}/100`;
+    } else {
+      dot.style.background = '#d1d5db';
+    }
+    container.appendChild(dot);
+  }
+}
+
+function playReviewReference() {
+  playAzureTTSWord(reviewWords[reviewIdx].word);
+}
+
+async function toggleReviewRecording() {
+  if (rvRecorder && rvRecorder.state === 'recording') stopRvRecording();
+  else await startRvRecording();
+}
+
+async function startRvRecording() {
+  try { rvMicStream = await navigator.mediaDevices.getUserMedia({ audio:true, video:false }); }
+  catch { document.getElementById('reviewStatus').textContent = '⚠️ Accès micro refusé.'; return; }
+  rvChunks = []; rvBlob = null;
+  rvRecorder = new MediaRecorder(rvMicStream);
+  rvRecorder.ondataavailable = e => { if (e.data.size > 0) rvChunks.push(e.data); };
+  rvRecorder.onstop = () => {
+    rvBlob = new Blob(rvChunks, { type:'audio/webm' });
+    document.getElementById('reviewAudio').src = URL.createObjectURL(rvBlob);
+    document.getElementById('reviewPlayback').style.display = 'block';
+    document.getElementById('reviewAnalyzeBtn').style.display = 'inline-flex';
+    document.getElementById('reviewStatus').textContent = '✅ Enregistré.';
+  };
+  rvRecorder.start(100);
+  const btn = document.getElementById('reviewRecBtn');
+  btn.classList.add('recording');
+  btn.innerHTML = '<i class="bi bi-stop-circle me-1"></i> Arrêter';
+  document.getElementById('reviewStatus').textContent = '🔴 Enregistrement…';
+  document.getElementById('reviewPlayback').style.display = 'none';
+  document.getElementById('reviewAnalyzeBtn').style.display = 'none';
+}
+
+function stopRvRecording() {
+  if (rvRecorder && rvRecorder.state === 'recording') rvRecorder.stop();
+  if (rvMicStream) rvMicStream.getTracks().forEach(t => t.stop());
+  const btn = document.getElementById('reviewRecBtn');
+  btn.classList.remove('recording');
+  btn.innerHTML = '<i class="bi bi-record-circle me-1"></i> Prononcer';
+}
+
+async function analyzeReviewAttempt() {
+  if (!rvBlob) return;
+  const word = reviewWords[reviewIdx].word;
+  const current = reviewResults[reviewIdx];
+  const analyzeBtn = document.getElementById('reviewAnalyzeBtn');
+  const status = document.getElementById('reviewStatus');
+
+  analyzeBtn.disabled = true;
+  status.textContent = '⏳ Analyse…';
+
+  let pcm;
+  try { pcm = await decodeAudioToPCM16k(rvBlob); }
+  catch { status.textContent = '❌ Décodage échoué.'; analyzeBtn.disabled = false; return; }
+
+  let token, region;
+  try {
+    const r = await fetch(`${BASE}/api/azure/speech-token`);
+    if (!r.ok) throw new Error();
+    ({ token, region } = await r.json());
+  } catch { status.textContent = '❌ Token Azure échoué.'; analyzeBtn.disabled = false; return; }
+
+  try {
+    const speechConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(token, region);
+    speechConfig.speechRecognitionLanguage = 'fr-CA';
+
+    const paConfig = new SpeechSDK.PronunciationAssessmentConfig(
+      word,
+      SpeechSDK.PronunciationAssessmentGradingSystem.HundredMark,
+      SpeechSDK.PronunciationAssessmentGranularity.Phoneme,
+      false
+    );
+
+    const format = SpeechSDK.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
+    const pushStream = SpeechSDK.AudioInputStream.createPushStream(format);
+    const f32 = pcm.getChannelData(0);
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) i16[i] = Math.round(Math.max(-32768, Math.min(32767, f32[i] * 32768)));
+    pushStream.write(i16.buffer);
+    pushStream.close();
+
+    const audioConfig = SpeechSDK.AudioConfig.fromStreamInput(pushStream);
+    const recognizer  = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+    paConfig.applyTo(recognizer);
+
+    recognizer.recognizeOnceAsync(result => {
+      recognizer.close();
+      analyzeBtn.disabled = false;
+
+      if (result.reason !== SpeechSDK.ResultReason.RecognizedSpeech) {
+        status.textContent = '⚠️ Non reconnu — réessayez.';
+        rvBlob = null;
+        document.getElementById('reviewAnalyzeBtn').style.display = 'none';
+        return;
+      }
+
+      const score = Math.round(SpeechSDK.PronunciationAssessmentResult.fromResult(result).accuracyScore);
+      current.scores.push(score);
+      renderReviewDots(current.scores);
+
+      // Afficher le score
+      const c = scoreColor(score);
+      const resultEl = document.getElementById('reviewResult');
+      resultEl.style.display = 'flex';
+      resultEl.innerHTML = `<div class="score-badge" style="background:${c.bg}">
+        <span class="sv" style="color:${c.text}">${score}</span>
+        <span class="sl">Précision</span>
+      </div>`;
+
+      const passed = score >= REVIEW_PASS;
+      const attemptsLeft = REVIEW_MAX - current.scores.length;
+
+      if (passed) {
+        current.passed = true;
+        status.textContent = score >= 90 ? '🎉 Excellent !' : '✅ Réussi !';
+        showReviewNext();
+      } else if (attemptsLeft > 0) {
+        status.textContent = `${attemptsLeft} tentative${attemptsLeft > 1 ? 's' : ''} restante${attemptsLeft > 1 ? 's' : ''}.`;
+        rvBlob = null;
+        document.getElementById('reviewAnalyzeBtn').style.display = 'none';
+      } else {
+        status.textContent = 'Continuez à pratiquer ce mot !';
+        showReviewNext();
+      }
+
+    }, err => { recognizer.close(); analyzeBtn.disabled = false; status.textContent = '❌ ' + err; });
+
+  } catch(e) { analyzeBtn.disabled = false; status.textContent = '❌ ' + e.message; }
+}
+
+function showReviewNext() {
+  const isLast = reviewIdx >= reviewWords.length - 1;
+  const btn = document.getElementById('reviewNextBtn');
+  btn.textContent = isLast ? 'Voir le résumé →' : 'Mot suivant →';
+  btn.style.display = 'inline-block';
+  document.getElementById('reviewRecBtn').disabled = true;
+  document.getElementById('reviewAnalyzeBtn').style.display = 'none';
+}
+
+function nextReviewWord() {
+  reviewIdx++;
+  if (reviewIdx >= reviewWords.length) finishReview();
+  else showReviewWord();
+}
+
+function finishReview() {
+  const passed = reviewResults.filter(r => r.passed).length;
+  const total  = reviewResults.length;
+
+  document.getElementById('reviewWordDisplay').innerHTML =
+    `<span style="font-size:2.5rem;">${passed === total ? '🎉' : '💪'}</span>`;
+  document.getElementById('reviewProgressText').textContent =
+    `${passed} / ${total} mot${total > 1 ? 's' : ''} réussi${passed > 1 ? 's' : ''}`;
+
+  // Récap par mot
+  const recap = reviewResults.map(r => {
+    const best = r.scores.length ? Math.max(...r.scores) : 0;
+    const c = scoreColor(best);
+    return `<span style="background:${c.bg};color:${c.text};padding:.2rem .6rem;border-radius:6px;font-size:.9rem;margin:.1rem;display:inline-block;">
+      ${r.word} <b>${best}</b>
+    </span>`;
+  }).join(' ');
+
+  document.getElementById('reviewAttemptDots').innerHTML = recap;
+  document.getElementById('reviewResult').style.display = 'none';
+  document.getElementById('reviewStatus').textContent = '';
+
+  const btn = document.getElementById('reviewNextBtn');
+  btn.textContent = '← Retour aux résultats';
+  btn.style.display = 'inline-block';
+  btn.onclick = () => {
+    document.getElementById('reviewPanel').style.display = 'none';
+    document.getElementById('reviewRecBtn').disabled = false;
+    btn.onclick = nextReviewWord;
+    document.getElementById('resultsSection').scrollIntoView({ behavior:'smooth' });
+  };
+
+  ['reviewRecBtn','reviewAnalyzeBtn','reviewRefBtn','reviewPlayback'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
 }
 
 function clearResults() {
   document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('reviewEntry').style.display = 'none';
+  document.getElementById('reviewPanel').style.display = 'none';
   document.getElementById('analysisStatus').textContent = '';
   document.getElementById('rawJsonBox').style.display = 'none';
   document.getElementById('rawJsonBox').textContent = '';
   wordAudioCache.clear();
+  reviewWords = []; reviewIdx = 0; reviewResults = [];
 }
 </script>
 </body>
